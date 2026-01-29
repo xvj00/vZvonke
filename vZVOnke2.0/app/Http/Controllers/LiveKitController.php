@@ -24,7 +24,7 @@ class LiveKitController extends Controller
 
 //        создаем настройки токена где идентифицируем пользователя
         $tokenOptions = new AccessTokenOptions();
-        $tokenOptions->setIdentity($data['user_name']);
+        $tokenOptions->setIdentity(auth()->user() ? auth()->user()->name : $data['user_name']);
 
 //        создаем сам токен
         $token = new AccessToken($apiKey,$apiSecret, $tokenOptions);

@@ -1,15 +1,19 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import path from 'path'
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import path from 'path';
 
-// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      // Мы жестко говорим: "Используй React только отсюда"
-      react: path.resolve('./node_modules/react'),
-      'react-dom': path.resolve('./node_modules/react-dom'),
-    },
+      // Принудительно направляем Vite в папку с твоим русским билдом
+      '@livekit/components-react': path.resolve(__dirname, 'node_modules/@livekit/components-react/packages/react')
+    }
   },
-})
+  build: {
+    // Помогает Vite не спотыкаться на путях внутри OneDrive
+    commonjsOptions: {
+      include: [/@livekit\/components-react/, /node_modules/]
+    }
+  }
+});

@@ -8,7 +8,6 @@ function App() {
     const [userName, setUserName] = useState('');
     const [roomName, setRoomName] = useState('');
     const [token, setToken] = useState(null);
-
     // Функция запроса токена у Laravel
     const handleJoin = async () => {
         try {
@@ -51,17 +50,16 @@ function App() {
     // 2. Если токен получен — запускаем LiveKit
     return (
         <div style={{ height: '100vh' }}>
-            <LiveKitRoom
-                video={false}
-                audio={false}
-                token={token}
-                serverUrl="ws://localhost:7880" // Адрес твоего LiveKit в Docker
-                onDisconnected={() => setToken(null)}
-                data-lk-theme="default" // Темная тема оформления
-            >
-                {/* Готовый интерфейс конференции (сетка, кнопки, чат) */}
-                <VideoConference />
-            </LiveKitRoom>
+                    <LiveKitRoom
+                        video={false}
+                        audio={false}
+                        token={token}
+                        serverUrl="ws://localhost:7880"
+                        onDisconnected={() => setToken(null)}
+                        data-lk-theme="default"
+                    >
+                        <VideoConference />
+                    </LiveKitRoom>
         </div>
     );
 }
