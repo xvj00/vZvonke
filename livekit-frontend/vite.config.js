@@ -6,14 +6,8 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      // Принудительно направляем Vite в папку с твоим русским билдом
-      '@livekit/components-react': path.resolve(__dirname, 'node_modules/@livekit/components-react/packages/react')
+      '@livekit/components-react': path.resolve(__dirname, 
+        'node_modules/@livekit/components-react/packages/dist')
     }
   },
-  build: {
-    // Помогает Vite не спотыкаться на путях внутри OneDrive
-    commonjsOptions: {
-      include: [/@livekit\/components-react/, /node_modules/]
-    }
-  }
 });

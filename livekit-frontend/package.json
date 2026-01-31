@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@livekit/components": "github:xvj00/RU-components-js#ru-localization",
+    "@livekit/components-react": "github:xvj00/RU-components-js#ru-localization",
     "@livekit/components-styles": "^1.2.0",
     "axios": "^1.13.3",
     "i18next": "^25.8.0",
