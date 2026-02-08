@@ -1,0 +1,18 @@
+﻿FROM php:8.2-cli
+
+RUN apt-get update && apt-get install -y \
+    git curl zip unzip libpng-dev libjpeg-dev libfreetype6-dev libonig-dev libzip-dev \
+    && docker-php-ext-install pdo pdo_sqlite mbstring zip \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /var/www
+
+COPY composer.json composer.lock ./
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+RUN if [ -f composer.lock ]; then composer install --no-interaction; else composer install --no-interaction; fi
+
+COPY . .
+
+EXPOSE 8000
+
+CMD ["sh", "-c", "mkdir -p database && touch database/database.sqlite && php artisan serve --host=0.0.0.0 --port=8000"]

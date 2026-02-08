@@ -5,43 +5,44 @@ namespace App\Http\Controllers;
 use Agence104\LiveKit\AccessToken;
 use Agence104\LiveKit\AccessTokenOptions;
 use Agence104\LiveKit\VideoGrant;
+use App\Models\Meeting;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class LiveKitController extends Controller
 {
     public function generateToken(Request $request)
     {
         $data = $request->validate([
-            'room_name' => 'required|string',
+            'room_name' => 'required_without:room_uuid|string',
+            'room_uuid'  => 'nullable|uuid|exists:meetings,uuid',
             'user_name' => 'required|string',
         ]);
-//        берем данные из формы
 
+        if (!empty($data['room_uuid'])) {
+            $meet = Meeting::findOrFail($data['room_uuid']);
+        } else {
+            $meet = Meeting::create([
+                'uuid'    => (string) Str::uuid(),
+                'title'   => $data['room_name'],
+                'user_id' => auth()->check() ? auth()->id() : null,
+            ]);
+        }
 
         $apiKey = env('LIVEKIT_API_KEY');
         $apiSecret = env('LIVEKIT_API_SECRET');
 
-
-//        создаем настройки токена где идентифицируем пользователя
         $tokenOptions = new AccessTokenOptions();
         $tokenOptions->setIdentity(auth()->user() ? auth()->user()->name : $data['user_name']);
 
-//        создаем сам токен
-        $token = new AccessToken($apiKey,$apiSecret, $tokenOptions);
+        $token = new AccessToken($apiKey, $apiSecret, $tokenOptions);
 
-//        создаем доступ к комнате с именем из формы
         $grant = new VideoGrant();
         $grant->setRoomJoin(true);
-        $grant->setRoomName($data['room_name']);
-//        добавляем доступ к комнате к токену
+        $grant->setRoomName($meet->uuid);
         $token->setGrant($grant);
-//        создаем jwt токен для передачи в livekit
+
         $jwt = $token->toJwt();
-//      возвращаю токен в виде json
-        return response()->json(['token' => $jwt]);
-
-
-
-
+        return response()->json(['token' => $jwt, 'room_uuid' => $meet->uuid]);
     }
 }

@@ -1,0 +1,48 @@
+﻿version: "3.9"
+
+services:
+  backend:
+    build:
+      context: ./vZVOnke2.0
+      dockerfile: Dockerfile.dev
+    container_name: laravel
+    working_dir: /var/www
+    volumes:
+      - ./vZVOnke2.0:/var/www
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:8000
+      DB_CONNECTION: sqlite
+      DB_DATABASE: /var/www/database/database.sqlite
+      LIVEKIT_API_KEY: devkey
+      LIVEKIT_API_SECRET: secretkey
+      LIVEKIT_URL: ws://livekit:7880
+    depends_on:
+      - livekit
+
+  frontend:
+    build:
+      context: ./livekit-frontend
+      dockerfile: Dockerfile.dev
+    container_name: frontend
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: http://localhost:8000/api
+    volumes:
+      - ./livekit-frontend:/app
+      - /app/node_modules
+
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: livekit
+    command: --config /livekit.yaml
+    restart: unless-stopped
+    ports:
+      - "7880:7880"
+      - "50000-50050:50000-50050/udp"
+    volumes:
+      - ./vZVOnke2.0/livekit_server/livekit.yaml:/livekit.yaml

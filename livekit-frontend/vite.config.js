@@ -7,7 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@livekit/components-react': path.resolve(__dirname, 
-        'node_modules/@livekit/components-react/packages/dist')
+        'node_modules/@livekit/components-react/packages/react')
     }
   },
 });

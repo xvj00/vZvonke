@@ -127,6 +127,8 @@
       <excludeFolder url="file://$MODULE_DIR$/vZVOnke2.0/vendor/twirp/twirp" />
       <excludeFolder url="file://$MODULE_DIR$/vZVOnke2.0/vendor/vlucas/phpdotenv" />
       <excludeFolder url="file://$MODULE_DIR$/vZVOnke2.0/vendor/voku/portable-ascii" />
+      <excludeFolder url="file://$MODULE_DIR$/vZVOnke2.0/storage/app" />
+      <excludeFolder url="file://$MODULE_DIR$/vZVOnke2.0/storage/framework" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
