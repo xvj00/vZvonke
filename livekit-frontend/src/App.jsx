@@ -11,8 +11,7 @@ function App() {
 
   const seoData = useMemo(() => {
     const pathname = location.pathname || '/';
-    const url = new URL(window.location.href);
-    const room = url.searchParams.get('room');
+    const room = new URLSearchParams(location.search).get('room');
 
     if (pathname.startsWith('/login')) {
       return {

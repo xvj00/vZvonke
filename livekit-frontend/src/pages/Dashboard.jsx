@@ -82,7 +82,7 @@ const Dashboard = () => {
       } else {
         setError('Токен не получен. Проверьте API.');
       }
-    } catch (err) {
+    } catch {
       setError('Ошибка подключения к backend. Проверьте Laravel и CORS.');
     } finally {
       setLoadingCreate(false);
@@ -113,7 +113,7 @@ const Dashboard = () => {
       } else {
         setError('Токен не получен. Проверьте API.');
       }
-    } catch (err) {
+    } catch {
       setError('Не удалось подключиться. Проверьте код комнаты.');
     } finally {
       setLoadingJoin(false);

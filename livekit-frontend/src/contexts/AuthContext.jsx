@@ -1,4 +1,5 @@
-﻿import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+﻿/* eslint-disable react-refresh/only-export-components */
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { authApi, setAuthToken } from '../lib/api';
 
 const AuthContext = createContext(null);
@@ -10,7 +11,7 @@ const readStoredAuth = () => {
     if (!raw) return { token: null, user: null };
     const data = JSON.parse(raw);
     return { token: data?.token || null, user: data?.user || null };
-  } catch (error) {
+  } catch {
     return { token: null, user: null };
   }
 };
@@ -26,35 +27,47 @@ export const AuthProvider = ({ children }) => {
   }, [token]);
 
   const login = useCallback(async (payload) => {
-    const data = await authApi.login(payload);
-    const nextToken = data?.token || null;
-    const nextUser = data?.user || null;
-    setToken(nextToken);
-    setUser(nextUser);
-    setAuthToken(nextToken);
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ token: nextToken, user: nextUser }));
+    setLoading(true);
+    try {
+      const data = await authApi.login(payload);
+      const nextToken = data?.token || null;
+      const nextUser = data?.user || null;
+      setToken(nextToken);
+      setUser(nextUser);
+      setAuthToken(nextToken);
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ token: nextToken, user: nextUser }));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const register = useCallback(async (payload) => {
-    const data = await authApi.register(payload);
-    const nextToken = data?.token || null;
-    const nextUser = data?.user || null;
-    setToken(nextToken);
-    setUser(nextUser);
-    setAuthToken(nextToken);
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ token: nextToken, user: nextUser }));
+    setLoading(true);
+    try {
+      const data = await authApi.register(payload);
+      const nextToken = data?.token || null;
+      const nextUser = data?.user || null;
+      setToken(nextToken);
+      setUser(nextUser);
+      setAuthToken(nextToken);
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ token: nextToken, user: nextUser }));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const logout = useCallback(async () => {
+    setLoading(true);
     try {
       await authApi.logout();
-    } catch (error) {
+    } catch {
       // noop: if token is invalid, just clear client state
     }
     setAuthToken(null);
     setToken(null);
     setUser(null);
     localStorage.removeItem(AUTH_STORAGE_KEY);
+    setLoading(false);
   }, []);
 
   const value = useMemo(
