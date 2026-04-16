@@ -7,6 +7,15 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
+  server: {
+    host: true,
+    allowedHosts: ['vzvonke.ru'],
+    hmr: {
+      protocol: 'wss',
+      host: 'vzvonke.ru',
+      clientPort: 8443,
+    },
+  },
   resolve: {
     alias: {
       // Как в старой рабочей версии: используем готовый dist внутри форка,

@@ -29,9 +29,10 @@ services:
       dockerfile: Dockerfile.dev
     container_name: frontend
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"
     environment:
-      VITE_API_URL: http://localhost:8000/api
+      VITE_API_URL: /api
+      VITE_LIVEKIT_WS_URL: wss://vzvonke.ru:8443/livekit
     volumes:
       - ./livekit-frontend:/app
       - /app/node_modules
