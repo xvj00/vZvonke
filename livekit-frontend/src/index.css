@@ -31,6 +31,7 @@ body {
   min-height: 100vh;
   background: radial-gradient(circle at 10% 10%, #ffffff 0%, #f7efe0 45%, #f4e3d0 100%);
   color: var(--ink);
+  overflow-x: hidden;
 }
 
 #root {
@@ -88,4 +89,8 @@ button:disabled {
   cursor: not-allowed;
   box-shadow: none;
   transform: none;
+}
+
+button {
+  touch-action: manipulation;
 }

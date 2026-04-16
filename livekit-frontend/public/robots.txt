@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+
+# Technical and private endpoints
+Disallow: /api/
+Disallow: /token/
+Disallow: /room/private/
+
+Sitemap: https://vzvonke.ru:8443/sitemap.xml
