@@ -9,15 +9,11 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      // Русифицированный форк ставится как монорепа, без exports для @livekit/components-react.
-      // Поэтому направляем импорт прямо на исходники пакета react внутри форка.
+      // Как в старой рабочей версии: используем готовый dist внутри форка,
+      // чтобы избежать подтягивания dev-зависимостей из исходников монорепы.
       '@livekit/components-react': path.resolve(
         __dirname,
-        'node_modules/@livekit/components-react/packages/react/src/index.ts',
-      ),
-      '@livekit/components-core': path.resolve(
-        __dirname,
-        'node_modules/@livekit/components-react/packages/core/src/index.ts',
+        'node_modules/@livekit/components-react/packages/react/dist',
       ),
     },
   },
