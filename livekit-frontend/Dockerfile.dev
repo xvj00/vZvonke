@@ -3,7 +3,7 @@
 WORKDIR /app
 
 COPY package.json pnpm-lock.yaml ./
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN npm i -g pnpm@10.28.2
 RUN pnpm install
 
 COPY . .

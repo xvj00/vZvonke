@@ -37,6 +37,13 @@
     "vite": "^7.2.4"
   },
   "pnpm": {
+    "onlyBuiltDependencies": [
+      "@livekit/components-core",
+      "@livekit/components-react",
+      "@livekit/components-styles",
+      "@parcel/watcher",
+      "esbuild"
+    ],
     "overrides": {
       "@livekit/components-react>@livekit/components-core": "github:xvj00/RU-components-js#0c649cff4324d64753d97ec34bc6b41f0e2607fe&path:/packages/core"
     }
