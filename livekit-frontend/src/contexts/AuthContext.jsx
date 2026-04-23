@@ -1,4 +1,4 @@
-﻿/* eslint-disable react-refresh/only-export-components */
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { authApi, setAuthToken } from '../lib/api';
 
@@ -22,6 +22,10 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(stored.token);
   const [loading, setLoading] = useState(false);
 
+  const persistAuth = useCallback((nextToken, nextUser) => {
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ token: nextToken, user: nextUser }));
+  }, []);
+
   useEffect(() => {
     setAuthToken(token);
   }, [token]);
@@ -35,11 +39,11 @@ export const AuthProvider = ({ children }) => {
       setToken(nextToken);
       setUser(nextUser);
       setAuthToken(nextToken);
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ token: nextToken, user: nextUser }));
+      persistAuth(nextToken, nextUser);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [persistAuth]);
 
   const register = useCallback(async (payload) => {
     setLoading(true);
@@ -50,11 +54,18 @@ export const AuthProvider = ({ children }) => {
       setToken(nextToken);
       setUser(nextUser);
       setAuthToken(nextToken);
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ token: nextToken, user: nextUser }));
+      persistAuth(nextToken, nextUser);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [persistAuth]);
+
+  const refreshProfile = useCallback(async () => {
+    const profile = await authApi.getProfile();
+    setUser(profile);
+    persistAuth(token, profile);
+    return profile;
+  }, [token, persistAuth]);
 
   const logout = useCallback(async () => {
     setLoading(true);
@@ -71,8 +82,8 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const value = useMemo(
-    () => ({ user, token, loading, login, register, logout }),
-    [user, token, loading, login, register, logout],
+    () => ({ user, token, loading, login, register, logout, refreshProfile }),
+    [user, token, loading, login, register, logout, refreshProfile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

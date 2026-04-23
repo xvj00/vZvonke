@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { LiveKitRoom, VideoConference } from '@livekit/components-react';
 import '@livekit/components-styles';
@@ -7,7 +7,7 @@ import { authApi } from '../lib/api';
 import '../styles/dashboard.css';
 
 const Dashboard = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshProfile } = useAuth();
   const [searchParams] = useSearchParams();
   const roomParam = searchParams.get('room');
 
@@ -20,11 +20,27 @@ const Dashboard = () => {
   const [sharebarOpen, setSharebarOpen] = useState(false);
   const [loadingCreate, setLoadingCreate] = useState(false);
   const [loadingJoin, setLoadingJoin] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [profileSuccess, setProfileSuccess] = useState('');
+  const [profileForm, setProfileForm] = useState({ name: '', login: '', email: '' });
   const [error, setError] = useState('');
+  const avatarInputRef = useRef(null);
 
   useEffect(() => {
     if (roomParam) setRoomCodeInput(roomParam);
   }, [roomParam]);
+
+  useEffect(() => {
+    if (!user) return;
+    setProfileForm({
+      name: user?.name || '',
+      login: user?.login || '',
+      email: user?.email || '',
+    });
+  }, [user]);
 
   const buildShareLink = (roomUuid) => `${window.location.origin}/guest?room=${roomUuid}`;
 
@@ -121,6 +137,58 @@ const Dashboard = () => {
     }
   };
 
+  const handleAvatarUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setError('');
+    setUploadingAvatar(true);
+    try {
+      const formData = new FormData();
+      formData.append('avatar', file);
+      await authApi.updateProfile(formData);
+      await refreshProfile();
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Не удалось загрузить аватар.');
+    } finally {
+      setUploadingAvatar(false);
+      event.target.value = '';
+    }
+  };
+
+  const openProfile = () => {
+    if (user) {
+      setProfileForm({
+        name: user?.name || '',
+        login: user?.login || '',
+        email: user?.email || '',
+      });
+    }
+    setProfileError('');
+    setProfileSuccess('');
+    setProfileOpen(true);
+  };
+
+  const handleProfileChange = (event) => {
+    const { name, value } = event.target;
+    setProfileForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleProfileSave = async (event) => {
+    event.preventDefault();
+    setProfileSaving(true);
+    setProfileError('');
+    setProfileSuccess('');
+    try {
+      await authApi.updateProfile(profileForm);
+      await refreshProfile();
+      setProfileSuccess('Профиль обновлен');
+    } catch (err) {
+      setProfileError(err?.response?.data?.message || 'Не удалось сохранить профиль.');
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
   if (token) {
     return (
       <div className="room-container">
@@ -168,7 +236,19 @@ const Dashboard = () => {
         </div>
         <div className="landing__header-actions">
           {user ? (
-            <button className="secondary-btn" onClick={logout}>Выйти</button>
+            <>
+              <div className="profile-chip">
+                {user?.avatar_url ? (
+                  <img src={user.avatar_url} alt="Аватар" className="profile-chip__avatar" />
+                ) : (
+                  <span className="profile-chip__fallback">
+                    {(user?.name || user?.login || 'U').slice(0, 1).toUpperCase()}
+                  </span>
+                )}
+              </div>
+              <button className="secondary-btn" onClick={openProfile}>Профиль</button>
+              <button className="secondary-btn" onClick={logout}>Выйти</button>
+            </>
           ) : null}
         </div>
       </header>
@@ -265,6 +345,60 @@ const Dashboard = () => {
           </div>
         </section>
       </main>
+
+      {profileOpen && (
+        <div className="profile-modal-backdrop" onClick={() => setProfileOpen(false)}>
+          <div className="profile-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="profile-modal__header">
+              <h2>Профиль</h2>
+              <button type="button" className="ghost" onClick={() => setProfileOpen(false)}>Закрыть</button>
+            </div>
+            <div className="profile-modal__avatar-block">
+              {user?.avatar_url ? (
+                <img src={user.avatar_url} alt="Аватар" className="profile-modal__avatar" />
+              ) : (
+                <span className="profile-modal__avatar profile-modal__avatar--fallback">
+                  {(user?.name || user?.login || 'U').slice(0, 1).toUpperCase()}
+                </span>
+              )}
+              <button
+                type="button"
+                className="secondary-btn profile-chip__upload"
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={uploadingAvatar}
+              >
+                {uploadingAvatar ? 'Загружаем…' : 'Сменить аватар'}
+              </button>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                hidden
+                onChange={handleAvatarUpload}
+              />
+            </div>
+            <form className="profile-modal__form" onSubmit={handleProfileSave}>
+              <label>
+                <span>Имя</span>
+                <input name="name" value={profileForm.name} onChange={handleProfileChange} />
+              </label>
+              <label>
+                <span>Логин</span>
+                <input name="login" value={profileForm.login} onChange={handleProfileChange} />
+              </label>
+              <label>
+                <span>Email</span>
+                <input name="email" type="email" value={profileForm.email} onChange={handleProfileChange} />
+              </label>
+              {profileError && <div className="form-error">{profileError}</div>}
+              {profileSuccess && <div className="profile-success">{profileSuccess}</div>}
+              <button type="submit" className="primary-btn" disabled={profileSaving}>
+                {profileSaving ? 'Сохраняем…' : 'Сохранить'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

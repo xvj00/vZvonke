@@ -23,6 +23,17 @@ export const authApi = {
     const response = await api.get('/user');
     return response.data;
   },
+  async getProfile() {
+    const response = await api.get('/profile');
+    return response.data;
+  },
+  async updateProfile(payload) {
+    const isFormData = payload instanceof FormData;
+    const response = await api.post('/profile', payload, isFormData ? {} : {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return response.data;
+  },
   async login(payload) {
     const response = await api.post('/login', payload);
     return response.data;

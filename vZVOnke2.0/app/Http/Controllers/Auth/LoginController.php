@@ -13,8 +13,9 @@ class LoginController extends Controller
     {
         $data = $request->validated();
         if (Auth::attempt($data)) {
-            $token = Auth::user()->createToken('main')->plainTextToken;
-            return response()->json(['token' => $token, 'user' => Auth::user()]);
+            $user = Auth::user();
+            $token = $user->createToken('main')->plainTextToken;
+            return response()->json(['token' => $token, 'user' => $user]);
         }
         return response()->json(['error' => 'Неверный логин или пароль'], 401);
     }

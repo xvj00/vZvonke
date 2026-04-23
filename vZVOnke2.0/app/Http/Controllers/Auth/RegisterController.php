@@ -9,7 +9,7 @@ use Illuminate\Http\Request;
 
 class RegisterController extends Controller
 {
-    public function Register(RegisterRequest $request)
+    public function register(RegisterRequest $request)
     {
         $data = $request->validated();
         $user = User::create($data);
