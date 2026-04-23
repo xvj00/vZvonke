@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { LiveKitRoom, VideoConference } from '@livekit/components-react';
 import '@livekit/components-styles';
@@ -17,6 +17,7 @@ const Dashboard = () => {
   const [token, setToken] = useState(null);
   const [shareLink, setShareLink] = useState('');
   const [copyStatus, setCopyStatus] = useState('');
+  const [sharebarOpen, setSharebarOpen] = useState(false);
   const [loadingCreate, setLoadingCreate] = useState(false);
   const [loadingJoin, setLoadingJoin] = useState(false);
   const [error, setError] = useState('');
@@ -124,13 +125,23 @@ const Dashboard = () => {
     return (
       <div className="room-container">
         {shareLink && (
-          <div className="room-sharebar">
-            <span>Ссылка для приглашения</span>
-            <div className="room-sharebar__actions">
-              <input readOnly value={shareLink} />
-              <button type="button" className="ghost" onClick={handleCopy}>
-                {copyStatus || 'Копировать'}
-              </button>
+          <div className={`room-sharebar ${sharebarOpen ? 'is-open' : ''}`}>
+            <button
+              type="button"
+              className="room-sharebar__toggle"
+              onClick={() => setSharebarOpen((prev) => !prev)}
+              aria-expanded={sharebarOpen}
+              aria-label={sharebarOpen ? 'Свернуть ссылку приглашения' : 'Показать ссылку приглашения'}
+            >
+              <span className="room-sharebar__chevron" aria-hidden>▾</span>
+            </button>
+            <div className="room-sharebar__panel">
+              <div className="room-sharebar__actions">
+                <input readOnly value={shareLink} />
+                <button type="button" className="ghost" onClick={handleCopy}>
+                  {copyStatus || 'Копировать'}
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -149,87 +160,111 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="dashboard">
-      <header className="dashboard__header">
-        <div>
-          <p className="eyebrow">Закрытые видеовстречи</p>
-          <h2>LiveKit Campus</h2>
-          <p className="muted">Создайте комнату, поделитесь названием и подключайтесь за пару кликов.</p>
+    <div className="landing">
+      <header className="landing__header">
+        <div className="landing__brand">
+          <span className="landing__brand-mark">V</span>
+          <span>вZвонке</span>
         </div>
-        {user && <button className="ghost" onClick={logout}>Выйти</button>}
+        <div className="landing__header-actions">
+          {user ? (
+            <button className="secondary-btn" onClick={logout}>Выйти</button>
+          ) : null}
+        </div>
       </header>
 
-      <section className="dashboard__grid">
-        <div className="tile tile--primary">
-          <div className="tile__icon">
-            <span className="icon-bubble" />
-          </div>
-          <h3>Создать видеовстречу</h3>
-          <p className="muted">Укажите название встречи — комната будет создана и доступна по имени.</p>
-          <div className="form-grid">
-            {!user && (
+      <main className="landing__content">
+        <section className="landing__left">
+          <h1>Видеовстречи без ограничений</h1>
+          <p className="muted">
+            Бесплатные звонки любого масштаба. Общайтесь с коллегами и друзьями без лимитов по времени.
+          </p>
+
+          <div className="meeting-panel">
+            <div className="meeting-panel__row">
+              {!user && (
+                <label>
+                  <span>Имя</span>
+                  <input
+                    placeholder="Ваше имя"
+                    value={userName}
+                    onChange={(e) => setUserName(e.target.value)}
+                  />
+                </label>
+              )}
               <label>
-                Имя
+                <span>Название встречи</span>
                 <input
-                  placeholder="Ваше имя"
-                  value={userName}
-                  onChange={(e) => setUserName(e.target.value)}
+                  placeholder="Например: Диплом, созвон"
+                  value={roomName}
+                  onChange={(e) => setRoomName(e.target.value)}
                 />
               </label>
-            )}
-            <label>
-              Название
-              <input
-                placeholder="Например: Диплом, созвон"
-                value={roomName}
-                onChange={(e) => setRoomName(e.target.value)}
-              />
-            </label>
+            </div>
+            <button
+              className="primary-btn"
+              onClick={handleCreate}
+              disabled={!roomName || (!user && !userName) || loadingCreate}
+            >
+              {loadingCreate ? 'Подключаем…' : 'Создать встречу'}
+            </button>
           </div>
-          {error && <div className="form-error">{error}</div>}
-          <button className="tile__cta" onClick={handleCreate} disabled={!roomName || (!user && !userName) || loadingCreate}>
-            {loadingCreate ? 'Подключаем…' : 'Создать и войти'}
-          </button>
-        </div>
-        <div className="tile tile--action">
-          <div className="tile__icon tile__icon--small">
-            <span className="icon-people" />
-          </div>
-          <h3>Присоединиться по ссылке</h3>
-          <p className="muted">Вставьте ссылку или код комнаты и подключайтесь.</p>
-          <div className="form-grid">
-            {!user && (
+
+          <div className="join-panel">
+            <div className="join-panel__row">
+              {!user && (
+                <label>
+                  <span>Имя</span>
+                  <input
+                    placeholder="Ваше имя"
+                    value={userName}
+                    onChange={(e) => setUserName(e.target.value)}
+                  />
+                </label>
+              )}
               <label>
-                Имя
+                <span>Код или ссылка</span>
                 <input
-                  placeholder="Ваше имя"
-                  value={userName}
-                  onChange={(e) => setUserName(e.target.value)}
+                  placeholder="https://.../guest?room=..."
+                  value={roomCodeInput}
+                  onChange={(e) => setRoomCodeInput(e.target.value)}
                 />
               </label>
-            )}
-            <label>
-              Ссылка или код
-              <input
-                placeholder="https://.../guest?room=..."
-                value={roomCodeInput}
-                onChange={(e) => setRoomCodeInput(e.target.value)}
-              />
-            </label>
+            </div>
+            <button className="secondary-btn" onClick={handleJoin} disabled={(!user && !userName) || loadingJoin}>
+              {loadingJoin ? 'Подключаем…' : 'Присоединиться'}
+            </button>
           </div>
-          <button className="tile__cta" onClick={handleJoin} disabled={(!user && !userName) || loadingJoin}>
-            {loadingJoin ? 'Подключаем…' : 'Войти'}
-          </button>
+
           {error && <div className="form-error">{error}</div>}
-        </div>
-        <div className="tile tile--action">
-          <div className="tile__icon tile__icon--small">
-            <span className="icon-calendar" />
+
+          {shareLink && (
+            <div className="share-block">
+              <span>Ссылка для приглашения</span>
+              <div className="share-block__actions">
+                <input readOnly value={shareLink} />
+                <button type="button" className="secondary-btn" onClick={handleCopy}>
+                  {copyStatus || 'Копировать'}
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+
+        <section className="landing__preview" aria-hidden>
+          <div className="preview-grid">
+            <div className="preview-tile" />
+            <div className="preview-tile preview-tile--active" />
+            <div className="preview-tile" />
+            <div className="preview-tile preview-tile--avatar">V</div>
+            <div className="preview-controls">
+              <span />
+              <span />
+              <span />
+            </div>
           </div>
-          <h3>Запланировать</h3>
-          <p className="muted">Сохраните детали созвона в календаре после старта комнаты.</p>
-        </div>
-      </section>
+        </section>
+      </main>
     </div>
   );
 };

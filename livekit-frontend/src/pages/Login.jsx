@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import AuthShell from '../components/AuthShell';
 import { useAuth } from '../contexts/AuthContext';
@@ -44,21 +44,21 @@ const Login = () => {
 
   return (
     <AuthShell
-      title="С возвращением"
-      subtitle="Войдите, чтобы подключаться к комнатам LiveKit и сохранять историю встреч."
+      title="Вход"
+      subtitle="Войдите в свой аккаунт"
       footer={
         <span>
-          Нет аккаунта? <Link to="/register">Создать</Link>
+          Еще нет аккаунта? <Link to="/register">Зарегистрироваться</Link>
         </span>
       }
     >
       <form className="auth-form" onSubmit={onSubmit}>
         <label>
-          Логин
+          <span>Логин</span>
           <input
             name="login"
             type="text"
-            placeholder="student01"
+            placeholder="Введите логин"
             value={form.login}
             onChange={onChange}
             required
@@ -66,11 +66,11 @@ const Login = () => {
           {fieldErrors.login && <span className="field-error">{fieldErrors.login}</span>}
         </label>
         <label>
-          Пароль
+          <span>Пароль</span>
           <input
             name="password"
             type="password"
-            placeholder="••••••"
+            placeholder="Введите пароль"
             value={form.password}
             onChange={onChange}
             required

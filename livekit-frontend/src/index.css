@@ -1,25 +1,25 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&family=Unbounded:wght@400;600&display=swap&subset=cyrillic,cyrillic-ext');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap&subset=cyrillic,cyrillic-ext');
 
 :root {
-  font-family: 'Manrope', 'Segoe UI', sans-serif;
+  font-family: 'Inter', 'Segoe UI', sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color: #111415;
-  background-color: #f8f3ea;
+  color: #0f172a;
+  background-color: #f8fafc;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  --sand: #f8f3ea;
-  --ink: #121314;
-  --green: #1f7a5a;
-  --teal: #0d5c63;
-  --sun: #f5c16c;
-  --coral: #ea6b5e;
+  --sand: #f8fafc;
+  --ink: #0f172a;
+  --green: #2563eb;
+  --teal: #1d4ed8;
+  --sun: #dbeafe;
+  --coral: #ef4444;
   --cloud: #ffffff;
-  --muted: #616b6f;
-  --border: rgba(18, 19, 20, 0.12);
-  --shadow: 0 30px 80px rgba(21, 26, 28, 0.18);
+  --muted: #64748b;
+  --border: #dbe2ea;
+  --shadow: 0 24px 48px rgba(15, 23, 42, 0.08);
 }
 
 * {
@@ -29,7 +29,7 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: radial-gradient(circle at 10% 10%, #ffffff 0%, #f7efe0 45%, #f4e3d0 100%);
+  background: #f8fafc;
   color: var(--ink);
   overflow-x: hidden;
 }
@@ -63,17 +63,17 @@ input {
 }
 
 input:focus {
-  border-color: rgba(13, 92, 99, 0.6);
-  box-shadow: 0 0 0 3px rgba(13, 92, 99, 0.15);
+  border-color: rgba(37, 99, 235, 0.6);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
 }
 
 button {
   border: none;
-  border-radius: 999px;
+  border-radius: 12px;
   padding: 12px 22px;
   font-size: 0.95rem;
   font-weight: 600;
-  background: linear-gradient(135deg, #0d5c63, #1f7a5a);
+  background: #2563eb;
   color: #fff;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -81,7 +81,7 @@ button {
 
 button:hover {
   transform: translateY(-1px);
-  box-shadow: 0 10px 20px rgba(13, 92, 99, 0.2);
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.24);
 }
 
 button:disabled {

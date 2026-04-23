@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import AuthShell from '../components/AuthShell';
 import { useAuth } from '../contexts/AuthContext';
@@ -41,21 +41,21 @@ const Register = () => {
 
   return (
     <AuthShell
-      title="Создайте аккаунт"
-      subtitle="Пару минут — и вы можете подключаться к учебным комнатам и проектным созвонам."
+      title="Регистрация"
+      subtitle="Создайте новый аккаунт"
       footer={
         <span>
-          Уже есть аккаунт? <Link to="/login">Войти</Link>
+          Уже зарегистрированы? <Link to="/login">Войти</Link>
         </span>
       }
     >
       <form className="auth-form" onSubmit={onSubmit}>
         <label>
-          Логин
+          <span>Логин</span>
           <input
             name="login"
             type="text"
-            placeholder="student01"
+            placeholder="Введите логин"
             value={form.login}
             onChange={onChange}
             required
@@ -63,11 +63,11 @@ const Register = () => {
           {fieldErrors.login && <span className="field-error">{fieldErrors.login}</span>}
         </label>
         <label>
-          Имя
+          <span>Имя</span>
           <input
             name="name"
             type="text"
-            placeholder="Анна Ильина"
+            placeholder="Ваше имя"
             value={form.name}
             onChange={onChange}
             required
@@ -75,11 +75,11 @@ const Register = () => {
           {fieldErrors.name && <span className="field-error">{fieldErrors.name}</span>}
         </label>
         <label>
-          Почта
+          <span>Почта</span>
           <input
             name="email"
             type="email"
-            placeholder="anna@campus.ru"
+            placeholder="Электронная почта"
             value={form.email}
             onChange={onChange}
             required
@@ -87,11 +87,11 @@ const Register = () => {
           {fieldErrors.email && <span className="field-error">{fieldErrors.email}</span>}
         </label>
         <label>
-          Пароль
+          <span>Пароль</span>
           <input
             name="password"
             type="password"
-            placeholder="минимум 6 символов"
+            placeholder="Введите пароль"
             value={form.password}
             onChange={onChange}
             required
