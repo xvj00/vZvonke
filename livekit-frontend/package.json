@@ -11,18 +11,18 @@
   },
   "dependencies": {
     "@floating-ui/dom": "^1.7.6",
-    "@livekit/components-core": "github:xvj00/RU-components-js#0c649cff4324d64753d97ec34bc6b41f0e2607fe&path:/packages/core",
-    "@livekit/components-react": "github:xvj00/RU-components-js#0c649cff4324d64753d97ec34bc6b41f0e2607fe&path:/packages/react",
-    "@livekit/components-styles": "github:xvj00/RU-components-js#0c649cff4324d64753d97ec34bc6b41f0e2607fe&path:/packages/styles",
     "axios": "^1.13.3",
     "clsx": "^2.1.1",
+    "emoji-picker-react": "^4.13.3",
     "i18next": "^25.8.0",
     "i18next-browser-languagedetector": "^8.2.0",
-    "livekit-client": "^2.17.0",
+    "mediasoup-client": "^3.15.7",
+    "qrcode.react": "^4.2.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-i18next": "^16.5.3",
     "react-router-dom": "^7.9.2",
+    "socket.io-client": "^4.8.1",
     "usehooks-ts": "^3.1.1"
   },
   "devDependencies": {
@@ -38,14 +38,8 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "@livekit/components-core",
-      "@livekit/components-react",
-      "@livekit/components-styles",
       "@parcel/watcher",
       "esbuild"
-    ],
-    "overrides": {
-      "@livekit/components-react>@livekit/components-core": "github:xvj00/RU-components-js#0c649cff4324d64753d97ec34bc6b41f0e2607fe&path:/packages/core"
-    }
+    ]
   }
 }

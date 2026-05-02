@@ -1,8 +1,0 @@
-keys:
-  # API_KEY: API_SECRET
-  devkey: secretkey
-port: 7880
-rtc:
-  port_range_start: 50000
-  port_range_end: 50050
-  use_external_ip: false # Для локальной разработки ставим false

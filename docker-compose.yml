@@ -1,77 +1,101 @@
-﻿services:
-  mysql:
+﻿# Запуск из каталога diplomSam:
+#   copy env.docker.example .env   (и заполнить)
+#   docker compose build --no-cache
+#   docker compose up -d
+#
+# Mediasoup (UDP RTP): на VPS откройте в фаерволе TCP 4001 и UDP диапазон RTC_UDP_RANGE.
+# На Linux для WebRTC иногда проще profile mediasoup с network_mode: host (см. комментарии в env.docker.example).
+
+services:
+  db:
     image: mysql:8.0
-    container_name: mysql
-    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     environment:
-      MYSQL_DATABASE: vzvonke
-      MYSQL_USER: vzvonke
-      MYSQL_PASSWORD: vzvonke_secret
-      MYSQL_ROOT_PASSWORD: root_secret
-    ports:
-      - "3306:3306"
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?}
+      MYSQL_DATABASE: ${DB_DATABASE:-vzvonke}
+      MYSQL_USER: ${DB_USERNAME:-vzvonke}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?}
     volumes:
       - mysql_data:/var/lib/mysql
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot_secret"]
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" || exit 1"]
       interval: 5s
       timeout: 5s
-      retries: 20
+      retries: 30
+      start_period: 40s
 
-  backend:
+  laravel:
     build:
       context: ./vZVOnke2.0
-      dockerfile: Dockerfile.dev
-    container_name: laravel
-    working_dir: /var/www
-    volumes:
-      - ./vZVOnke2.0:/var/www
-    ports:
-      - "8000:8000"
+    restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      APP_ENV: local
-      APP_DEBUG: "true"
-      APP_URL: http://localhost:8000
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_KEY: ${APP_KEY:?}
+      APP_URL: ${APP_URL:?}
       DB_CONNECTION: mysql
-      DB_HOST: mysql
+      DB_HOST: db
       DB_PORT: 3306
-      DB_DATABASE: vzvonke
-      DB_USERNAME: vzvonke
-      DB_PASSWORD: vzvonke_secret
-      FILESYSTEM_DISK: public
-      LIVEKIT_API_KEY: devkey
-      LIVEKIT_API_SECRET: secretkey
-      LIVEKIT_URL: ws://livekit:7880
-    depends_on:
-      mysql:
-        condition: service_healthy
-      livekit:
-        condition: service_started
-
-  frontend:
-    build:
-      context: ./livekit-frontend
-      dockerfile: Dockerfile.dev
-    container_name: frontend
-    ports:
-      - "127.0.0.1:5173:5173"
-    environment:
-      VITE_API_URL: /api
-      VITE_LIVEKIT_WS_URL: wss://vzvonke.ru:8443/livekit
+      DB_DATABASE: ${DB_DATABASE:-vzvonke}
+      DB_USERNAME: ${DB_USERNAME:-vzvonke}
+      DB_PASSWORD: ${DB_PASSWORD:?}
+      SESSION_DRIVER: database
+      CACHE_STORE: database
+      QUEUE_CONNECTION: sync
+      SANCTUM_STATEFUL_DOMAINS: ${SANCTUM_STATEFUL_DOMAINS:-localhost}
+      MEDIASOUP_INTERNAL_SECRET: ${MEDIASOUP_INTERNAL_SECRET:-}
     volumes:
-      - ./livekit-frontend:/app
-      - /app/node_modules
+      - laravel_storage:/var/www/storage
+    depends_on:
+      db:
+        condition: service_healthy
 
-  livekit:
-    image: livekit/livekit-server:latest
-    container_name: livekit
-    command: --config /livekit.yaml
+  web:
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api}
+        VITE_APP_BASE_URL: ${VITE_APP_BASE_URL:-}
+        VITE_MEDIASOUP_SIGNALING_URL: ${VITE_MEDIASOUP_SIGNALING_URL:?}
+        VITE_REQUIRE_AUTH_FOR_CALLS: ${VITE_REQUIRE_AUTH_FOR_CALLS:-true}
     restart: unless-stopped
     ports:
-      - "7880:7880"
-      - "50000-50050:50000-50050/udp"
+      - "${HTTP_PORT:-80}:80"
     volumes:
-      - ./vZVOnke2.0/livekit_server/livekit.yaml:/livekit.yaml
+      - laravel_storage:/mnt/laravel-storage:ro
+    depends_on:
+      - laravel
+
+  mediasoup:
+    build: ./mediasoup-server
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: 4001
+      MEDIASOUP_LISTEN_IP: 0.0.0.0
+      MEDIASOUP_ANNOUNCED_IP: ${MEDIASOUP_ANNOUNCED_IP:?}
+      LARAVEL_API_URL: ${LARAVEL_API_URL:-http://web/api}
+      REQUIRE_ROOM_AUTH: ${REQUIRE_ROOM_AUTH:-true}
+      RTC_MIN_PORT: ${RTC_MIN_PORT:-40000}
+      RTC_MAX_PORT: ${RTC_MAX_PORT:-49999}
+      EMPTY_ROOM_GRACE_MS: ${EMPTY_ROOM_GRACE_MS:-30000}
+      MAX_PEERS_PER_ROOM: ${MAX_PEERS_PER_ROOM:-50}
+      MEDIASOUP_NUM_WORKERS: ${MEDIASOUP_NUM_WORKERS:-}
+      MEDIASOUP_INITIAL_OUTGOING_BITRATE: ${MEDIASOUP_INITIAL_OUTGOING_BITRATE:-1000000}
+      MEDIASOUP_MAX_INCOMING_BITRATE: ${MEDIASOUP_MAX_INCOMING_BITRATE:-}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      MEDIASOUP_INTERNAL_SECRET: ${MEDIASOUP_INTERNAL_SECRET:-}
+    ports:
+      - "${MEDIASOUP_PORT:-4001}:4001/tcp"
+      - "${RTC_UDP_RANGE:-40000-49999}:${RTC_UDP_RANGE:-40000-49999}/udp"
+    depends_on:
+      - web
 
 volumes:
   mysql_data:
+  laravel_storage:

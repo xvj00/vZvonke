@@ -13,7 +13,16 @@ const Login = () => {
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
 
-  const from = useMemo(() => location.state?.from?.pathname || '/', [location.state]);
+  const from = useMemo(() => {
+    const fromStatePath = location.state?.from?.pathname || '';
+    const fromStateSearch = location.state?.from?.search || '';
+    const queryNext = new URLSearchParams(location.search).get('next') || '';
+    const safeQueryNext = queryNext.startsWith('/') ? queryNext : '';
+
+    if (safeQueryNext) return safeQueryNext;
+    if (fromStatePath) return `${fromStatePath}${fromStateSearch}`;
+    return '/';
+  }, [location.search, location.state]);
 
   const onChange = (event) => {
     setForm((prev) => ({ ...prev, [event.target.name]: event.target.value }));

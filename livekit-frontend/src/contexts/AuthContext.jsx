@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { authApi, setAuthToken } from '../lib/api';
 
 const AuthContext = createContext(null);
-const AUTH_STORAGE_KEY = 'livekit.auth';
+const AUTH_STORAGE_KEY = 'mediasoup.auth';
 
 const readStoredAuth = () => {
   try {

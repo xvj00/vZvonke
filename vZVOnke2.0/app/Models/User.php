@@ -4,6 +4,7 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Storage;
@@ -61,5 +62,15 @@ class User extends Authenticatable
         }
 
         return Storage::disk('public')->url($this->avatar_path);
+    }
+
+    public function ownedRooms(): HasMany
+    {
+        return $this->hasMany(Room::class, 'owner_id');
+    }
+
+    public function roomParticipations(): HasMany
+    {
+        return $this->hasMany(RoomParticipant::class);
     }
 }

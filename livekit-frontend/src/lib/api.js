@@ -45,8 +45,8 @@ export const authApi = {
   async logout() {
     return api.post('/logout');
   },
-  async getLivekitToken(payload) {
-    const response = await api.post('/get-token', payload);
+  async createRoom(payload) {
+    const response = await api.post('/create-room', payload);
     return response.data;
   },
 };

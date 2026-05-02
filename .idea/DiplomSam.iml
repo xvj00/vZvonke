@@ -8,7 +8,6 @@
       <sourceFolder url="file://$MODULE_DIR$/vZVOnke2.0/tests" isTestSource="true" packagePrefix="Tests\" />
       <sourceFolder url="file://$MODULE_DIR$/vZVOnke2.0/tests/Feature" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/vZVOnke2.0/tests/Unit" isTestSource="true" />
-      <excludeFolder url="file://$MODULE_DIR$/vZVOnke2.0/vendor/agence104/livekit-server-sdk" />
       <excludeFolder url="file://$MODULE_DIR$/vZVOnke2.0/vendor/brick/math" />
       <excludeFolder url="file://$MODULE_DIR$/vZVOnke2.0/vendor/carbonphp/carbon-doctrine-types" />
       <excludeFolder url="file://$MODULE_DIR$/vZVOnke2.0/vendor/composer" />

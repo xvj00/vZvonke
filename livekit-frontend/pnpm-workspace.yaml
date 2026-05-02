@@ -1,3 +1,2 @@
 ignoredBuiltDependencies:
-  - '@livekit/components'
   - esbuild
