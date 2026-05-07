@@ -1,7 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import RequireAdmin from './components/RequireAdmin';
-import RequireAuth from './components/RequireAuth';
 import './styles/app.css';
 
 const Admin = lazy(() => import('./pages/Admin'));
@@ -14,7 +13,9 @@ function App() {
 
   const seoData = useMemo(() => {
     const pathname = location.pathname || '/';
-    const room = new URLSearchParams(location.search).get('room');
+    const roomFromQuery = new URLSearchParams(location.search).get('room');
+    const joinMatch = pathname.match(/^\/join\/([^/]+)/);
+    const room = roomFromQuery || (joinMatch ? decodeURIComponent(joinMatch[1]) : '');
 
     if (pathname.startsWith('/login')) {
       return {
@@ -37,7 +38,7 @@ function App() {
       };
     }
 
-    if (pathname.startsWith('/guest') && room) {
+    if ((pathname.startsWith('/guest') || pathname.startsWith('/join/')) && room) {
       return {
         title: `Комната ${room} - вZvonke`,
         description: `Подключение к видеокомнате ${room} в сервисе вZvonke.`,
@@ -74,14 +75,7 @@ function App() {
       }
     >
       <Routes>
-        <Route
-          path="/"
-          element={
-            <RequireAuth>
-              <Dashboard />
-            </RequireAuth>
-          }
-        />
+        <Route path="/" element={<Dashboard />} />
         <Route
           path="/admin"
           element={
@@ -91,6 +85,7 @@ function App() {
           }
         />
         <Route path="/guest" element={<Dashboard />} />
+        <Route path="/join/:roomId" element={<Dashboard />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="*" element={<Navigate to="/" replace />} />

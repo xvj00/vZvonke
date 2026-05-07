@@ -1,15 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { Device } from 'mediasoup-client';
-import { io } from 'socket.io-client';
-import EmojiPicker from 'emoji-picker-react';
-import { QRCodeSVG } from 'qrcode.react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api, authApi } from '../lib/api';
+import endCallIcon from '../assets/end-call.png';
 import '../styles/dashboard.css';
 
 const ROOM_CODE_STORAGE_KEY = 'vzvonke:last-room-code';
 const SHARE_LINK_STORAGE_KEY = 'vzvonke:last-share-link';
+const EmojiPicker = lazy(() => import('emoji-picker-react'));
+const QRCodeSVG = lazy(() => import('qrcode.react').then((mod) => ({ default: mod.QRCodeSVG })));
 
 const getProfileFormFromUser = (profile) => ({
   name: profile?.name || '',
@@ -40,6 +39,14 @@ const localizeApiMessage = (message) => {
     ['Join room before sending messages', 'Сначала войдите в комнату, затем отправляйте сообщения.'],
     ['Room not found', 'Комната не найдена.'],
     ['Participant not found', 'Участник не найден.'],
+    ['Authorization token is required to join this room', 'Для входа в эту комнату требуется авторизация.'],
+    ['Room access denied', 'Доступ к комнате запрещен.'],
+    ['Forbidden', 'Доступ запрещен.'],
+    ['websocket error', 'Ошибка WebSocket-соединения.'],
+    ['xhr poll error', 'Ошибка сетевого соединения с сервером.'],
+    ['transport error', 'Сбой соединения с сервером.'],
+    ['timeout', 'Превышено время ожидания ответа сервера.'],
+    ['Network Error', 'Ошибка сети. Проверьте подключение к интернету.'],
   ]);
 
   return dictionary.get(text) || text;
@@ -47,8 +54,12 @@ const localizeApiMessage = (message) => {
 
 const Dashboard = () => {
   const { user, token: authToken, logout, refreshProfile } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { roomId: roomPathParam } = useParams();
   const [searchParams] = useSearchParams();
-  const roomParam = searchParams.get('room');
+  const roomParam = searchParams.get('room') || (roomPathParam ? decodeURIComponent(roomPathParam) : '');
+  const isGuestRoute = location.pathname.startsWith('/guest') || location.pathname.startsWith('/join/');
 
   const [userName, setUserName] = useState('');
   const [roomName, setRoomName] = useState('');
@@ -79,6 +90,7 @@ const Dashboard = () => {
   const [videoInputs, setVideoInputs] = useState([]);
   const [selectedAudioInput, setSelectedAudioInput] = useState('');
   const [selectedVideoInput, setSelectedVideoInput] = useState('');
+  const [preferredFacingMode, setPreferredFacingMode] = useState('user');
   const [sharingScreen, setSharingScreen] = useState(false);
   const [connectingRoom, setConnectingRoom] = useState(false);
   const [focusedPeerId, setFocusedPeerId] = useState(null); // 'local' | peerId | null
@@ -88,6 +100,7 @@ const Dashboard = () => {
   const [moreOpen, setMoreOpen] = useState(false);
   const [isOrganizer, setIsOrganizer] = useState(false);
   const [devicePickerOpen, setDevicePickerOpen] = useState(null); // 'audio' | 'video' | null
+  const [fullscreenTileId, setFullscreenTileId] = useState('');
   const avatarInputRef = useRef(null);
   const socketRef = useRef(null);
   const deviceRef = useRef(null);
@@ -112,12 +125,33 @@ const Dashboard = () => {
   const videoPickerRef = useRef(null);
   const fileInputRef = useRef(null);
   const handNoticeTimerRef = useRef(null);
+  const [isMobileView, setIsMobileView] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(max-width: 720px)').matches;
+  });
+  const isLowEndDevice = useMemo(() => {
+    if (typeof navigator === 'undefined') return false;
+    const deviceMemory = Number(navigator.deviceMemory || 0);
+    const cpuCores = Number(navigator.hardwareConcurrency || 0);
+    return (deviceMemory > 0 && deviceMemory <= 4) || (cpuCores > 0 && cpuCores <= 4);
+  }, []);
 
   const signalingUrl = import.meta.env.VITE_MEDIASOUP_SIGNALING_URL || 'http://localhost:4001';
   const requireAuthForCalls = String(import.meta.env.VITE_REQUIRE_AUTH_FOR_CALLS ?? 'false') === 'true';
   const currentDisplayName = user ? (user?.name || user?.login || 'Пользователь') : (userName || 'Гость');
 
   const emojiPickerTheme = useMemo(() => 'light', []);
+  const canFlipCamera = isMobileView && !sharingScreen && (videoInputs.length > 1 || !selectedVideoInput);
+  const defaultVideoConstraints = useMemo(() => {
+    if (isLowEndDevice || isMobileView) {
+      return {
+        width: { ideal: 640, max: 960 },
+        height: { ideal: 360, max: 540 },
+        frameRate: { ideal: 20, max: 24 },
+      };
+    }
+    return true;
+  }, [isLowEndDevice, isMobileView]);
 
   const formatBytes = (bytes) => {
     const value = Number(bytes);
@@ -205,10 +239,19 @@ const Dashboard = () => {
     localStreamRef.current = localStream;
   }, [localStream]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const mediaQuery = window.matchMedia('(max-width: 720px)');
+    const updateMobile = () => setIsMobileView(mediaQuery.matches);
+    updateMobile();
+    mediaQuery.addEventListener('change', updateMobile);
+    return () => mediaQuery.removeEventListener('change', updateMobile);
+  }, []);
+
   const appBaseUrl = (import.meta.env.VITE_APP_BASE_URL || window.location.origin).replace(/\/+$/, '');
-  const buildCallLink = (roomUuid) => `${appBaseUrl}/guest?room=${encodeURIComponent(roomUuid)}`;
+  const buildCallLink = (roomUuid) => `${appBaseUrl}/join/${encodeURIComponent(roomUuid)}`;
   const buildLoginLink = (roomUuid) => {
-    const nextPath = `/guest?room=${encodeURIComponent(roomUuid)}`;
+    const nextPath = `/join/${encodeURIComponent(roomUuid)}`;
     return `${appBaseUrl}/login?next=${encodeURIComponent(nextPath)}`;
   };
 
@@ -218,11 +261,16 @@ const Dashboard = () => {
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
       try {
         const url = new URL(trimmed);
-        return url.searchParams.get('room') || '';
+        const fromQuery = url.searchParams.get('room') || '';
+        if (fromQuery) return fromQuery;
+        const joinPath = url.pathname.match(/^\/join\/([^/]+)/);
+        return joinPath ? decodeURIComponent(joinPath[1]) : '';
       } catch {
         return '';
       }
     }
+    const joinMatch = trimmed.match(/\/join\/([^/?#]+)/);
+    if (joinMatch) return decodeURIComponent(joinMatch[1]);
     const match = trimmed.match(/room=([^&]+)/);
     if (match) return match[1];
     return trimmed;
@@ -232,6 +280,12 @@ const Dashboard = () => {
     if (!roomParam) return;
     setRoomCodeInput(roomParam);
   }, [roomParam]);
+
+  useEffect(() => {
+    if (!location.pathname.startsWith('/guest')) return;
+    if (!roomParam) return;
+    navigate(`/join/${encodeURIComponent(roomParam)}`, { replace: true });
+  }, [location.pathname, navigate, roomParam]);
 
   useEffect(() => {
     try {
@@ -447,6 +501,10 @@ const Dashboard = () => {
     closeRoomConnections();
 
     try {
+      const [{ Device }, { io }] = await Promise.all([
+        import('mediasoup-client'),
+        import('socket.io-client'),
+      ]);
       const socket = io(signalingUrl, { transports: ['websocket'] });
       socketRef.current = socket;
 
@@ -454,7 +512,7 @@ const Dashboard = () => {
         try {
           await consumeProducer({ producerId, peerId, displayName: producerDisplayName, avatarUrl, cameraEnabled, handRaised }, roomId);
         } catch (err) {
-          setError(err.message || 'Ошибка получения нового потока');
+          setError(localizeApiMessage(err?.message || 'Ошибка получения нового потока'));
         }
       });
 
@@ -567,7 +625,9 @@ const Dashboard = () => {
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: selectedAudioInput ? { deviceId: { exact: selectedAudioInput } } : true,
-        video: selectedVideoInput ? { deviceId: { exact: selectedVideoInput } } : true,
+        video: selectedVideoInput
+          ? { ...(defaultVideoConstraints === true ? {} : defaultVideoConstraints), deviceId: { exact: selectedVideoInput } }
+          : defaultVideoConstraints,
       });
       // Join muted and without camera by default.
       stream.getAudioTracks().forEach((track) => {
@@ -605,7 +665,7 @@ const Dashboard = () => {
       setActiveRoom({ roomId, displayName });
     } catch (err) {
       closeRoomConnections();
-      setError(err?.message || 'Не удалось подключиться к комнате.');
+      setError(localizeApiMessage(err?.message || 'Не удалось подключиться к комнате.'));
     } finally {
       setConnectingRoom(false);
     }
@@ -650,7 +710,10 @@ const Dashboard = () => {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { deviceId: { exact: deviceId } },
+        video: {
+          ...(defaultVideoConstraints === true ? {} : defaultVideoConstraints),
+          deviceId: { exact: deviceId },
+        },
       });
       const [nextVideoTrack] = stream.getVideoTracks();
       if (!nextVideoTrack) return;
@@ -661,11 +724,50 @@ const Dashboard = () => {
     }
   };
 
+  const flipCamera = async () => {
+    if (!activeRoom || sharingScreen) return;
+
+    // 1) Preferred way for phones: ask for opposite facing mode.
+    const nextFacingMode = preferredFacingMode === 'user' ? 'environment' : 'user';
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          ...(defaultVideoConstraints === true ? {} : defaultVideoConstraints),
+          facingMode: { ideal: nextFacingMode },
+        },
+      });
+      const [nextVideoTrack] = stream.getVideoTracks();
+      if (!nextVideoTrack) return;
+      await replaceLocalTrack('video', nextVideoTrack);
+      nextVideoTrack.enabled = videoEnabled;
+      setPreferredFacingMode(nextFacingMode);
+
+      const nextDeviceId = nextVideoTrack.getSettings?.().deviceId || '';
+      if (nextDeviceId) {
+        setSelectedVideoInput(nextDeviceId);
+      }
+      return;
+    } catch {
+      // 2) Fallback: cycle through enumerated cameras when facingMode is unavailable.
+    }
+
+    if (videoInputs.length < 2) {
+      setError('Не удалось перевернуть камеру на этом устройстве.');
+      return;
+    }
+
+    const currentIndex = videoInputs.findIndex((device) => device.deviceId === selectedVideoInput);
+    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % videoInputs.length : 0;
+    await handleVideoInputChange(videoInputs[nextIndex].deviceId);
+  };
+
   const restoreCameraTrack = async () => {
     if (!camProducerRef.current) return;
 
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: selectedVideoInput ? { deviceId: { exact: selectedVideoInput } } : true,
+      video: selectedVideoInput
+        ? { ...(defaultVideoConstraints === true ? {} : defaultVideoConstraints), deviceId: { exact: selectedVideoInput } }
+        : defaultVideoConstraints,
     });
     const [cameraTrack] = stream.getVideoTracks();
     if (!cameraTrack) return;
@@ -741,6 +843,51 @@ const Dashboard = () => {
     if (!emoji) return;
     insertEmoji(emoji);
   };
+
+  const openFocusedInFullscreen = async () => {
+    const preferredId = focusedPeerId || (sharingScreen ? 'local' : null);
+    if (!preferredId) return;
+    const target = document.querySelector(`.video-tile[data-tile-id="${preferredId}"]`);
+    if (!target || !target.requestFullscreen) return;
+    try {
+      await target.requestFullscreen();
+    } catch {
+      setError('Не удалось открыть полноэкранный режим.');
+    }
+  };
+
+  const openTileInFullscreen = async (tileId) => {
+    if (!tileId) return;
+    const target = document.querySelector(`.video-tile[data-tile-id="${tileId}"]`);
+    if (!target || !target.requestFullscreen) return;
+    try {
+      const current = document.fullscreenElement;
+      if (current && (current === target || current.contains(target))) {
+        await document.exitFullscreen();
+        setFullscreenTileId('');
+      } else {
+        await target.requestFullscreen();
+        setFullscreenTileId(tileId);
+      }
+    } catch {
+      setError('Не удалось открыть полноэкранный режим.');
+    }
+  };
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      const current = document.fullscreenElement;
+      if (!current) {
+        setFullscreenTileId('');
+        return;
+      }
+      const tile = current.closest?.('.video-tile');
+      const tileId = tile?.getAttribute?.('data-tile-id') || '';
+      setFullscreenTileId(tileId);
+    };
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+  }, []);
 
   const sendChatMessage = async () => {
     const socket = socketRef.current;
@@ -1021,8 +1168,27 @@ const Dashboard = () => {
               </span>
             )}
             {focusedPeerId && (
-              <button type="button" className="ghost room-topbar__focus-clear" onClick={() => setFocusedPeerId(null)}>
-                Сбросить фокус
+              <button
+                type="button"
+                className="ghost room-topbar__focus-clear room-topbar__icon-btn"
+                onClick={() => setFocusedPeerId(null)}
+                title="Сбросить фокус"
+                aria-label="Сбросить фокус"
+              >
+                <ClearFocusIcon />
+                <span className="room-topbar__btn-text">Сбросить фокус</span>
+              </button>
+            )}
+            {(focusedPeerId || sharingScreen) && (
+              <button
+                type="button"
+                className="ghost room-topbar__focus-clear room-topbar__icon-btn"
+                onClick={openFocusedInFullscreen}
+                title="Развернуть выбранное видео на весь экран"
+                aria-label="Во весь экран"
+              >
+                <ExpandIcon />
+                <span className="room-topbar__btn-text">Во весь экран</span>
               </button>
             )}
           </div>
@@ -1050,18 +1216,22 @@ const Dashboard = () => {
               <div className="share-qr-grid">
                 <div className="share-qr-card">
                   <div className="share-qr-card__title">Вход в звонок</div>
-                  <QRCodeSVG value={shareLink} size={220} level="M" includeMargin className="share-qr-card__code" />
+                  <Suspense fallback={<div className="share-qr-card__placeholder">Генерируем QR…</div>}>
+                    <QRCodeSVG value={shareLink} size={220} level="M" includeMargin className="share-qr-card__code" />
+                  </Suspense>
                 </div>
                 {extractRoomCode(shareLink) && (
                   <div className="share-qr-card">
                     <div className="share-qr-card__title">Вход через аккаунт</div>
-                    <QRCodeSVG
-                      value={buildLoginLink(extractRoomCode(shareLink))}
-                      size={220}
-                      level="M"
-                      includeMargin
-                      className="share-qr-card__code"
-                    />
+                    <Suspense fallback={<div className="share-qr-card__placeholder">Генерируем QR…</div>}>
+                      <QRCodeSVG
+                        value={buildLoginLink(extractRoomCode(shareLink))}
+                        size={220}
+                        level="M"
+                        includeMargin
+                        className="share-qr-card__code"
+                      />
+                    </Suspense>
                   </div>
                 )}
               </div>
@@ -1099,6 +1269,10 @@ const Dashboard = () => {
               avatarUrl={currentUserAvatarUrl || null}
               forcePlaceholder={!videoEnabled && !sharingScreen}
               handRaised={handRaised}
+              mirror={!sharingScreen}
+              tileId="local"
+              isFullscreen={fullscreenTileId === 'local'}
+              onOpenFullscreen={openTileInFullscreen}
               variant={focusedPeerId === 'local' ? 'spotlight' : (sharingScreen ? 'spotlight' : 'local')}
               isFocused={focusedPeerId === 'local'}
               onFocus={() => setFocusedPeerId('local')}
@@ -1112,6 +1286,9 @@ const Dashboard = () => {
                 avatarUrl={participant.avatarUrl || null}
                 forcePlaceholder={participant.cameraEnabled === false}
                 handRaised={participant.handRaised === true}
+                tileId={participant.peerId}
+                isFullscreen={fullscreenTileId === participant.peerId}
+                onOpenFullscreen={openTileInFullscreen}
                 variant={focusedPeerId === participant.peerId ? 'spotlight' : 'remote'}
                 isFocused={focusedPeerId === participant.peerId}
                 onFocus={() => setFocusedPeerId(participant.peerId)}
@@ -1217,6 +1394,16 @@ const Dashboard = () => {
                       )}
                     </div>
                   </div>
+                  {canFlipCamera && (
+                    <button
+                      type="button"
+                      className="dock-btn dock-btn--ghost"
+                      onClick={flipCamera}
+                      title="Перевернуть камеру"
+                    >
+                      <FlipCamIcon />
+                    </button>
+                  )}
                 </div>
 
                 <div className="call-dock__divider" aria-hidden />
@@ -1232,7 +1419,7 @@ const Dashboard = () => {
 
                 <button
                   type="button"
-                  className={`dock-btn dock-btn--ghost ${handRaised ? 'is-active' : ''}`}
+                  className={`dock-btn dock-btn--ghost dock-btn--hand ${handRaised ? 'is-active' : ''}`}
                   onClick={toggleHandRaise}
                   title={handRaised ? 'Опустить руку' : 'Поднять руку'}
                 >
@@ -1294,7 +1481,7 @@ const Dashboard = () => {
                             const socket = socketRef.current;
                             if (!socket || !roomId) return;
                             requestSocket(socket, 'endRoom', { roomId }).catch((err) => {
-                              setError(err?.message || 'Не удалось завершить звонок.');
+                              setError(localizeApiMessage(err?.message || 'Не удалось завершить звонок.'));
                             });
                           }}
                         >
@@ -1473,19 +1660,21 @@ const Dashboard = () => {
                             role="dialog"
                             aria-label="Выбор эмодзи"
                           >
-                            <EmojiPicker
-                              onEmojiClick={(emojiData) => {
-                                handleEmojiPick(emojiData);
-                                setEmojiOpen(false);
-                              }}
-                              theme={emojiPickerTheme}
-                              width="100%"
-                              height={340}
-                              searchDisabled={false}
-                              skinTonesDisabled={false}
-                              previewConfig={{ showPreview: false }}
-                              lazyLoadEmojis
-                            />
+                            <Suspense fallback={<div className="emoji-picker__loading">Загружаем эмодзи…</div>}>
+                              <EmojiPicker
+                                onEmojiClick={(emojiData) => {
+                                  handleEmojiPick(emojiData);
+                                  setEmojiOpen(false);
+                                }}
+                                theme={emojiPickerTheme}
+                                width="100%"
+                                height={340}
+                                searchDisabled={false}
+                                skinTonesDisabled={false}
+                                previewConfig={{ showPreview: false }}
+                                lazyLoadEmojis
+                              />
+                            </Suspense>
                           </div>
                         )}
                       </div>
@@ -1542,10 +1731,29 @@ const Dashboard = () => {
                   Админка
                 </Link>
               )}
+              {isGuestRoute && (
+                <Link className="secondary-btn" to="/">
+                  На главную
+                </Link>
+              )}
               <button className="secondary-btn" onClick={openProfile}>Профиль</button>
               <button className="secondary-btn" onClick={logout}>Выйти</button>
             </>
-          ) : null}
+          ) : (
+            <>
+              <Link className="secondary-btn" to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`}>
+                Войти
+              </Link>
+              <Link className="secondary-btn" to="/register">
+                Регистрация
+              </Link>
+              {roomParam && (
+                <Link className="secondary-btn" to="/guest">
+                  На главную
+                </Link>
+              )}
+            </>
+          )}
         </div>
       </header>
 
@@ -1556,52 +1764,64 @@ const Dashboard = () => {
             Бесплатные звонки любого масштаба. Общайтесь с коллегами и друзьями без лимитов по времени.
           </p>
 
-          <div className="meeting-panel">
-            <div className="meeting-panel__row">
-              {!user && (
-                <label>
-                  <span>Имя</span>
-                  <input
-                    placeholder="Ваше имя"
-                    value={userName}
-                    onChange={(e) => setUserName(e.target.value)}
-                  />
-                </label>
-              )}
+          {!user && (
+            <div className="guest-name-panel">
               <label>
-                <span>Название встречи</span>
+                <span>Как вас представить в звонке</span>
                 <input
-                  placeholder="Например: Диплом, созвон"
-                  value={roomName}
-                  onChange={(e) => setRoomName(e.target.value)}
+                  placeholder="Например: Иван Иванов"
+                  value={userName}
+                  onChange={(e) => setUserName(e.target.value)}
                 />
               </label>
             </div>
-            <button
-              className="primary-btn"
-              onClick={handleCreate}
-              disabled={!roomName || (!user && !userName) || loadingCreate || connectingRoom}
-            >
-              {loadingCreate ? 'Подключаем…' : 'Создать встречу'}
-            </button>
-          </div>
+          )}
 
-          <div className="join-panel">
-            <div className="join-panel__row">
-              {!user && (
+          {user ? (
+            <div className="meeting-panel">
+              <div className="meeting-panel__title">1. Создайте новую встречу</div>
+              <div className="meeting-panel__row">
                 <label>
-                  <span>Имя</span>
+                  <span>Название встречи</span>
                   <input
-                    placeholder="Ваше имя"
-                    value={userName}
-                    onChange={(e) => setUserName(e.target.value)}
+                    placeholder="Например: Диплом, созвон"
+                    value={roomName}
+                    onChange={(e) => setRoomName(e.target.value)}
                   />
                 </label>
-              )}
+              </div>
+              <button
+                className="primary-btn"
+                onClick={handleCreate}
+                disabled={!roomName || loadingCreate || connectingRoom}
+              >
+                {loadingCreate ? 'Подключаем…' : 'Создать встречу'}
+              </button>
+            </div>
+          ) : (
+            <div className="auth-required-panel">
+              <div className="meeting-panel__title">Создание встречи доступно только с аккаунтом</div>
+              <p className="auth-required-panel__text">
+                Войдите в аккаунт или зарегистрируйтесь, чтобы создать свою встречу.
+              </p>
+              <div className="auth-required-panel__actions">
+                <Link className="primary-btn" to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`}>
+                  Войти
+                </Link>
+                <Link className="secondary-btn" to="/register">
+                  Зарегистрироваться
+                </Link>
+              </div>
+            </div>
+          )}
+
+          <div className="join-panel">
+            <div className="meeting-panel__title">{user ? '2. Или войдите по ссылке/коду' : 'Присоединиться по ссылке/коду'}</div>
+            <div className="join-panel__row">
               <label>
                 <span>Код или ссылка</span>
                 <input
-                  placeholder="https://.../guest?room=..."
+                  placeholder="Вставьте ссылку приглашения или код комнаты"
                   value={roomCodeInput}
                   onChange={(e) => setRoomCodeInput(e.target.value)}
                 />
@@ -1626,18 +1846,22 @@ const Dashboard = () => {
               <div className="share-qr-grid">
                 <div className="share-qr-card">
                   <div className="share-qr-card__title">Быстрый вход в звонок</div>
-                  <QRCodeSVG value={shareLink} size={220} level="M" includeMargin className="share-qr-card__code" />
+                  <Suspense fallback={<div className="share-qr-card__placeholder">Генерируем QR…</div>}>
+                    <QRCodeSVG value={shareLink} size={220} level="M" includeMargin className="share-qr-card__code" />
+                  </Suspense>
                 </div>
                 {extractRoomCode(shareLink) && (
                   <div className="share-qr-card">
                     <div className="share-qr-card__title">Войти в аккаунт и перейти в звонок</div>
-                    <QRCodeSVG
-                      value={buildLoginLink(extractRoomCode(shareLink))}
-                      size={220}
-                      level="M"
-                      includeMargin
-                      className="share-qr-card__code"
-                    />
+                    <Suspense fallback={<div className="share-qr-card__placeholder">Генерируем QR…</div>}>
+                      <QRCodeSVG
+                        value={buildLoginLink(extractRoomCode(shareLink))}
+                        size={220}
+                        level="M"
+                        includeMargin
+                        className="share-qr-card__code"
+                      />
+                    </Suspense>
                   </div>
                 )}
               </div>
@@ -1724,11 +1948,16 @@ const VideoTile = ({
   variant = 'remote',
   avatarUrl = null,
   forcePlaceholder = false,
+  mirror = false,
   handRaised = false,
+  tileId = '',
+  isFullscreen = false,
+  onOpenFullscreen = null,
   onFocus,
   isFocused = false,
 }) => {
   const videoRef = useRef(null);
+  const lastTouchTapRef = useRef(0);
 
   useEffect(() => {
     if (!videoRef.current) return;
@@ -1745,7 +1974,20 @@ const VideoTile = ({
         `video-tile--${variant}`,
         isFocused ? 'is-focused' : '',
       ].filter(Boolean).join(' ')}
+      data-tile-id={tileId || undefined}
       onClick={onFocus}
+      onDoubleClick={() => {
+        if (onOpenFullscreen) onOpenFullscreen(tileId);
+      }}
+      onPointerUp={(event) => {
+        if (event.pointerType !== 'touch') return;
+        const now = Date.now();
+        const delta = now - lastTouchTapRef.current;
+        lastTouchTapRef.current = now;
+        if (delta > 0 && delta < 320 && onOpenFullscreen) {
+          onOpenFullscreen(tileId);
+        }
+      }}
       role={onFocus ? 'button' : undefined}
       tabIndex={onFocus ? 0 : undefined}
       onKeyDown={(event) => {
@@ -1757,7 +1999,7 @@ const VideoTile = ({
       }}
       aria-label={onFocus ? `Сфокусировать: ${title}` : undefined}
     >
-      <video ref={videoRef} autoPlay playsInline muted={muted} />
+      <video ref={videoRef} autoPlay playsInline muted={muted} className={mirror ? 'is-mirrored' : ''} />
       {showPlaceholder && (
         <div className="video-tile__placeholder">
           {avatarUrl ? (
@@ -1772,6 +2014,20 @@ const VideoTile = ({
           <HandIcon />
         </div>
       )}
+      {onOpenFullscreen && tileId ? (
+        <button
+          type="button"
+          className={`video-tile__expand ${isFullscreen ? 'is-active' : ''}`}
+          title={isFullscreen ? 'Свернуть из полноэкранного режима' : 'Развернуть на весь экран'}
+          aria-label={isFullscreen ? 'Свернуть из полноэкранного режима' : 'Развернуть на весь экран'}
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenFullscreen(tileId);
+          }}
+        >
+          {isFullscreen ? <CollapseIcon /> : <ExpandIcon />}
+        </button>
+      ) : null}
       <div className="video-tile__label">{title}</div>
     </article>
   );
@@ -1824,6 +2080,15 @@ const CamIcon = () => (
   </svg>
 );
 
+const FlipCamIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 10c0-2.8 2.2-5 5-5h8" />
+    <path d="M16 5l2.8 2.8L16 10.5" />
+    <path d="M21 14c0 2.8-2.2 5-5 5H8" />
+    <path d="M8 19l-2.8-2.8L8 13.5" />
+  </svg>
+);
+
 const ScreenIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
     <rect x="2" y="3" width="20" height="14" rx="2" />
@@ -1847,14 +2112,7 @@ const ChatIcon = () => (
   </svg>
 );
 
-const EndIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M10.5 13.5c.7.7 1.5 1 2.5 1s1.8-.3 2.5-1" />
-    <path d="M2 15c2.2-1.6 5.2-2.5 10-2.5S19.8 13.4 22 15" />
-    <path d="M6.5 15.5v3.5" />
-    <path d="M17.5 15.5v3.5" />
-  </svg>
-);
+const EndIcon = () => <img src={endCallIcon} alt="" className="end-icon-image" aria-hidden="true" />;
 
 const ChevronIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -1889,6 +2147,31 @@ const LinkIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07l-1.22 1.22" />
     <path d="M14 11a5 5 0 0 0-7.07 0l-2.12 2.12a5 5 0 0 0 7.07 7.07l1.22-1.22" />
+  </svg>
+);
+
+const ExpandIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="9 3 3 3 3 9" />
+    <line x1="3" y1="3" x2="10" y2="10" />
+    <polyline points="15 21 21 21 21 15" />
+    <line x1="14" y1="14" x2="21" y2="21" />
+  </svg>
+);
+
+const CollapseIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="10 3 3 3 3 10" />
+    <line x1="3" y1="3" x2="10" y2="10" />
+    <polyline points="14 21 21 21 21 14" />
+    <line x1="21" y1="21" x2="14" y2="14" />
+  </svg>
+);
+
+const ClearFocusIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="5" y1="5" x2="19" y2="19" />
+    <line x1="19" y1="5" x2="5" y2="19" />
   </svg>
 );
 

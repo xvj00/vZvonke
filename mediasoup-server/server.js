@@ -55,7 +55,7 @@ const _grace = Number(process.env.EMPTY_ROOM_GRACE_MS);
 const EMPTY_ROOM_GRACE_MS = Number.isFinite(_grace) && _grace >= 0 ? _grace : 30000;
 
 /** Максимум участников (peer-сессий) в одной mediasoup-комнате. */
-const MAX_PEERS_PER_ROOM = Math.min(500, Math.max(1, parsePositiveInt(process.env.MAX_PEERS_PER_ROOM, 50)));
+const MAX_PEERS_PER_ROOM = Math.min(500, Math.max(1, parsePositiveInt(process.env.MAX_PEERS_PER_ROOM, 20)));
 
 /**
  * Стартовая оценка исходящего битрейта транспорта (бит/с). Для видеозвонков VP8 обычно 500k–2M.
