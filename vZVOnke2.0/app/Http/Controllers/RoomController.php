@@ -130,6 +130,26 @@ class RoomController extends Controller
         return response()->json(['message' => 'Room closed successfully'], 200);
     }
 
+    public function closeEmptyByMediasoup(Request $request, string $uuid)
+    {
+        $room = $this->findRoomOrFail($uuid);
+
+        if ($room->status === 'closed') {
+            return response()->json(['message' => 'Room already closed'], 200);
+        }
+
+        $room->update([
+            'status' => 'closed',
+            'closed_at' => now(),
+        ]);
+
+        RoomParticipant::where('room_id', $room->id)
+            ->whereNull('left_at')
+            ->update(['left_at' => now()]);
+
+        return response()->json(['message' => 'Empty room closed successfully'], 200);
+    }
+
     public function show(Request $request, string $uuid)
     {
         $room = $this->findRoomOrFail($uuid);
@@ -165,12 +185,18 @@ class RoomController extends Controller
             'message' => ['nullable', 'string', 'max:2000'],
             'display_name' => ['nullable', 'string', 'max:255'],
             'file' => ['nullable', 'file', 'max:10240'], // up to 10MB
+        ], [
+            'message.max' => 'Сообщение не должно превышать 2000 символов.',
+            'display_name.max' => 'Имя отправителя не должно превышать 255 символов.',
+            'file.file' => 'Некорректный файл.',
+            'file.max' => 'Размер файла не должен превышать 10 МБ.',
+            'file.uploaded' => 'Не удалось загрузить файл. Попробуйте другой файл.',
         ]);
 
         $messageText = trim((string) ($validated['message'] ?? ''));
         $hasFile = $request->hasFile('file');
         if ($messageText === '' && !$hasFile) {
-            return response()->json(['message' => 'Message or file is required'], 422);
+            return response()->json(['message' => 'Нужно добавить текст сообщения или файл.'], 422);
         }
 
         $activeParticipant = RoomParticipant::where('room_id', $room->id)
@@ -178,7 +204,7 @@ class RoomController extends Controller
             ->whereNull('left_at')
             ->first();
         if (!$activeParticipant) {
-            return response()->json(['message' => 'Join room before sending messages'], 403);
+            return response()->json(['message' => 'Сначала войдите в комнату, затем отправляйте сообщения.'], 403);
         }
 
         $attachment = [
@@ -190,8 +216,18 @@ class RoomController extends Controller
 
         if ($hasFile) {
             $file = $request->file('file');
+            $mime = (string) ($file->getMimeType() ?: $file->getClientMimeType() ?: '');
+            $isImage = str_starts_with(strtolower($mime), 'image/');
+            $maxBytes = $isImage ? 5 * 1024 * 1024 : 10 * 1024 * 1024;
+            if (($file->getSize() ?? 0) > $maxBytes) {
+                return response()->json([
+                    'message' => $isImage
+                        ? 'Изображение слишком большое. Максимум 5 МБ.'
+                        : 'Файл слишком большой. Максимум 10 МБ.',
+                ], 422);
+            }
+
             $path = $file->store('room_uploads/' . $room->uuid, 'public');
-            $mime = $file->getMimeType() ?: $file->getClientMimeType();
             $attachment = [
                 'attachment_name' => $this->attachmentDisplayName($file),
                 'attachment_url' => asset('storage/'.$path),

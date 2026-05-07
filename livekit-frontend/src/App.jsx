@@ -1,10 +1,13 @@
-import { useEffect, useMemo } from 'react';
+import { lazy, Suspense, useEffect, useMemo } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import RequireAdmin from './components/RequireAdmin';
 import RequireAuth from './components/RequireAuth';
-import Dashboard from './pages/Dashboard';
-import Login from './pages/Login';
-import Register from './pages/Register';
 import './styles/app.css';
+
+const Admin = lazy(() => import('./pages/Admin'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
 
 function App() {
   const location = useLocation();
@@ -17,6 +20,13 @@ function App() {
       return {
         title: 'Вход - вZvonke',
         description: 'Вход в сервис видеоконференций вZvonke.',
+      };
+    }
+
+    if (pathname.startsWith('/admin')) {
+      return {
+        title: 'Админка - вZvonke',
+        description: 'Панель администратора вZvonke для просмотра пользователей и комнат.',
       };
     }
 
@@ -56,20 +66,36 @@ function App() {
   }, [seoData]);
 
   return (
-    <Routes>
-      <Route
-        path="/"
-        element={
-          <RequireAuth>
-            <Dashboard />
-          </RequireAuth>
-        }
-      />
-      <Route path="/guest" element={<Dashboard />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <Suspense
+      fallback={
+        <div className="app-loading" aria-label="Loading">
+          <div className="spinner" />
+        </div>
+      }
+    >
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <RequireAuth>
+              <Dashboard />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <RequireAdmin>
+              <Admin />
+            </RequireAdmin>
+          }
+        />
+        <Route path="/guest" element={<Dashboard />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   );
 }
 

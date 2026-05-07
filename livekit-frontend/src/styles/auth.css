@@ -126,6 +126,33 @@
     top: 80px;
   }
 }
+
+@media (max-width: 480px) {
+  .auth-page {
+    align-items: flex-start;
+    padding: 92px 12px 20px;
+  }
+
+  .auth-page__header {
+    height: 64px;
+    padding: 0 16px;
+  }
+
+  .auth-page__back {
+    left: 14px;
+    top: 76px;
+  }
+
+  .auth-card {
+    width: 100%;
+    padding: 22px;
+    border-radius: 14px;
+  }
+
+  .auth-card h1 {
+    font-size: 1.55rem;
+  }
+}
 .field-error {
   margin-top: 6px;
   font-size: 0.82rem;

@@ -29,7 +29,12 @@ class ProfileController extends Controller
             'name' => 'sometimes|string|max:255',
             'email' => 'sometimes|email|max:255|unique:users,email,' . $user->id,
             'login' => 'sometimes|string|max:255|unique:users,login,' . $user->id,
-            'avatar' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
+            'avatar' => 'nullable|image|mimes:jpg,jpeg,png,webp,gif|max:10240',
+        ], [
+            'avatar.image' => 'Файл аватара должен быть изображением.',
+            'avatar.mimes' => 'Аватар должен быть в формате: jpg, jpeg, png, webp, gif.',
+            'avatar.max' => 'Размер аватара не должен превышать 10 МБ.',
+            'avatar.uploaded' => 'Не удалось загрузить аватар. Попробуйте другой файл.',
         ]);
 
         if ($request->hasFile('avatar')) {

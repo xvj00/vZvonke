@@ -51,6 +51,25 @@ export const authApi = {
   },
 };
 
+export const adminApi = {
+  async overview() {
+    const response = await api.get('/admin/overview');
+    return response.data;
+  },
+  async users(params = {}) {
+    const response = await api.get('/admin/users', { params });
+    return response.data;
+  },
+  async rooms(params = {}) {
+    const response = await api.get('/admin/rooms', { params });
+    return response.data;
+  },
+  async activeRooms(params = {}) {
+    const response = await api.get('/admin/rooms/active', { params });
+    return response.data;
+  },
+};
+
 export const isValidationError = (error) =>
   error?.response?.status === 422 || error?.response?.status === 419;
 

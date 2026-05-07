@@ -22,5 +22,19 @@ export default defineConfig(({ mode }) => {
     resolve: {
       dedupe: ['react', 'react-dom'],
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return undefined;
+            if (id.includes('emoji-picker-react')) return 'emoji-picker';
+            if (id.includes('qrcode.react')) return 'qr';
+            if (id.includes('mediasoup-client') || id.includes('socket.io-client')) return 'realtime';
+            if (id.includes('react') || id.includes('scheduler')) return 'react-vendor';
+            return 'vendor';
+          },
+        },
+      },
+    },
   };
 });

@@ -159,6 +159,7 @@ async function getOrCreateRoom(roomId) {
     peers: new Map(),
     producers: new Map(),
     ownerPeerId: null,
+    ownerParticipantId: null,
     emptyRoomTimer: null,
   };
   rooms.set(roomId, room);
@@ -179,11 +180,11 @@ function scheduleEmptyRoomDeletion(roomId) {
 
   room.emptyRoomTimer = setTimeout(() => {
     room.emptyRoomTimer = null;
-    destroyRoom(roomId);
+    void destroyRoom(roomId);
   }, EMPTY_ROOM_GRACE_MS);
 }
 
-function destroyRoom(roomId) {
+async function destroyRoom(roomId) {
   const room = rooms.get(roomId);
   if (!room) return;
   if (room.peers.size > 0) return;
@@ -197,6 +198,7 @@ function destroyRoom(roomId) {
   }
 
   rooms.delete(roomId);
+  await notifyRoomClosedBecauseEmpty({ roomId });
   console.log(`room destroyed after empty timeout: ${roomId}`);
 }
 
@@ -237,6 +239,28 @@ async function notifyRoomLeave({ roomId, accessToken }) {
     });
   } catch (error) {
     console.warn("Failed to sync leave with Laravel:", error.message);
+  }
+}
+
+async function notifyRoomClosedBecauseEmpty({ roomId }) {
+  try {
+    const response = await fetch(`${laravelApiUrl}/internal/rooms/${roomId}/close-empty`, {
+      method: "POST",
+      headers: laravelFetchHeaders(null),
+    });
+
+    if (!response.ok) {
+      let message = `HTTP ${response.status}`;
+      try {
+        const data = await response.json();
+        if (data?.message) message = data.message;
+      } catch {
+        // noop
+      }
+      console.warn(`Failed to close empty room in Laravel (${roomId}): ${message}`);
+    }
+  } catch (error) {
+    console.warn(`Failed to close empty room in Laravel (${roomId}):`, error.message);
   }
 }
 
@@ -291,7 +315,6 @@ io.on("connection", (socket) => {
       }
       cancelEmptyRoomDeletion(room);
       const isOwner = participant?.role === "owner";
-      if (isOwner && !room.ownerPeerId) room.ownerPeerId = socket.id;
       room.peers.set(socket.id, {
         transports: new Map(),
         producers: new Map(),
@@ -299,10 +322,22 @@ io.on("connection", (socket) => {
         displayName: displayName || "Участник",
         avatarUrl: avatarUrl || null,
         cameraEnabled: true,
+        handRaised: false,
         accessToken: accessToken || null,
         participantId: participant?.id || null,
         role: participant?.role || null,
       });
+      if (isOwner) {
+        const hasActiveOwner = room.ownerPeerId && room.peers.has(room.ownerPeerId);
+        const sameOwnerRejoined =
+          participant?.id &&
+          room.ownerParticipantId &&
+          participant.id === room.ownerParticipantId;
+        if (!hasActiveOwner || sameOwnerRejoined) {
+          room.ownerPeerId = socket.id;
+          room.ownerParticipantId = participant?.id || room.ownerParticipantId || null;
+        }
+      }
       socket.join(roomId);
 
       const producers = [];
@@ -314,6 +349,7 @@ io.on("connection", (socket) => {
           displayName: entry.displayName || "Участник",
           avatarUrl: entry.avatarUrl || null,
           cameraEnabled: entry.cameraEnabled !== false,
+          handRaised: entry.handRaised === true,
           kind: entry.producer.kind,
         });
       }
@@ -460,6 +496,7 @@ io.on("connection", (socket) => {
         displayName: peer.displayName || "Участник",
         avatarUrl: peer.avatarUrl || null,
         cameraEnabled: peer.cameraEnabled !== false,
+        handRaised: peer.handRaised === true,
       });
 
       cb({ producerId: producer.id });
@@ -483,6 +520,7 @@ io.on("connection", (socket) => {
             displayName: entry.displayName || "Участник",
             avatarUrl: entry.avatarUrl || null,
             cameraEnabled: entry.cameraEnabled !== false,
+            handRaised: entry.handRaised === true,
             kind: entry.producer.kind,
           });
         }
@@ -535,6 +573,7 @@ io.on("connection", (socket) => {
         displayName: producerEntry.displayName || "Участник",
         avatarUrl: producerEntry.avatarUrl || null,
         cameraEnabled: producerEntry.cameraEnabled !== false,
+        handRaised: producerEntry.handRaised === true,
         producerKind: producerEntry.producer.kind,
       });
     } catch (error) {
@@ -613,6 +652,30 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("updateHandRaise", ({ roomId, handRaised }, cb) => {
+    try {
+      const room = rooms.get(roomId);
+      const peer = room?.peers.get(socket.id);
+      if (!room || !peer) throw new Error("Room/peer not found");
+
+      peer.handRaised = handRaised === true;
+
+      for (const entry of room.producers.values()) {
+        if (entry.peerId === socket.id) {
+          entry.handRaised = peer.handRaised;
+        }
+      }
+
+      io.to(roomId).emit("peerHandRaise", {
+        peerId: socket.id,
+        handRaised: peer.handRaised,
+      });
+      cb({ ok: true });
+    } catch (error) {
+      cb({ error: error.message });
+    }
+  });
+
   socket.on("disconnect", async () => {
     for (const [roomId, room] of rooms.entries()) {
       const peer = room.peers.get(socket.id);
@@ -632,6 +695,14 @@ io.on("connection", (socket) => {
       }
 
       room.peers.delete(socket.id);
+      if (room.ownerPeerId === socket.id) {
+        room.ownerPeerId = null;
+        const replacementOwner = Array.from(room.peers.entries()).find(([, candidate]) => candidate?.role === "owner");
+        if (replacementOwner) {
+          room.ownerPeerId = replacementOwner[0];
+          room.ownerParticipantId = replacementOwner[1]?.participantId || room.ownerParticipantId || null;
+        }
+      }
       await notifyRoomLeave({ roomId, accessToken: peer.accessToken });
       scheduleEmptyRoomDeletion(roomId);
     }

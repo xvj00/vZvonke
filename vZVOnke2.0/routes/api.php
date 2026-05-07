@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
+use App\Http\Controllers\AdminController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RoomController;
 use Illuminate\Http\Request;
@@ -17,6 +18,10 @@ Route::middleware('throttle:auth-strict')->group(function () {
 Route::post('/logout', [LoginController::class, 'logout'])
     ->middleware(['auth:sanctum', 'throttle:api-rooms'])
     ->name('logout');
+
+Route::post('/internal/rooms/{uuid}/close-empty', [RoomController::class, 'closeEmptyByMediasoup'])
+    ->middleware(['mediasoup.secret', 'throttle:api-rooms'])
+    ->name('internal.rooms.close-empty');
 
 Route::middleware(['auth:sanctum', 'throttle:api-rooms'])->group(function () {
     Route::get('/profile', [ProfileController::class, 'index']);
@@ -39,3 +44,13 @@ Route::middleware(['auth:sanctum', 'throttle:api-rooms'])->group(function () {
     Route::get('/rooms/{uuid}/messages', [RoomController::class, 'listMessages'])->name('room-messages');
     Route::post('/rooms/{uuid}/messages', [RoomController::class, 'storeMessage'])->name('room-messages-store');
 });
+
+Route::middleware(['auth:sanctum', 'admin', 'throttle:api-rooms'])
+    ->prefix('admin')
+    ->name('admin.')
+    ->group(function () {
+        Route::get('/overview', [AdminController::class, 'overview'])->name('overview');
+        Route::get('/users', [AdminController::class, 'users'])->name('users');
+        Route::get('/rooms', [AdminController::class, 'rooms'])->name('rooms');
+        Route::get('/rooms/active', [AdminController::class, 'activeRooms'])->name('rooms.active');
+    });

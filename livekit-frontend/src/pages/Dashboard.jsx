@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Device } from 'mediasoup-client';
 import { io } from 'socket.io-client';
 import EmojiPicker from 'emoji-picker-react';
@@ -8,6 +8,43 @@ import { useAuth } from '../contexts/AuthContext';
 import { api, authApi } from '../lib/api';
 import '../styles/dashboard.css';
 
+const ROOM_CODE_STORAGE_KEY = 'vzvonke:last-room-code';
+const SHARE_LINK_STORAGE_KEY = 'vzvonke:last-share-link';
+
+const getProfileFormFromUser = (profile) => ({
+  name: profile?.name || '',
+  login: profile?.login || '',
+  email: profile?.email || '',
+});
+
+const readStoredValue = (key) => {
+  try {
+    return localStorage.getItem(key) || '';
+  } catch {
+    return '';
+  }
+};
+
+const localizeApiMessage = (message) => {
+  const text = String(message || '').trim();
+  if (!text) return '';
+
+  const dictionary = new Map([
+    ['The file failed to upload.', 'Не удалось загрузить файл.'],
+    ['The avatar failed to upload.', 'Не удалось загрузить аватар.'],
+    ['The avatar field must be an image.', 'Файл аватара должен быть изображением.'],
+    ['The avatar field must be a file of type: jpg, jpeg, png, webp, gif.', 'Аватар должен быть в формате: jpg, jpeg, png, webp, gif.'],
+    ['The avatar field must not be greater than 10240 kilobytes.', 'Размер аватара не должен превышать 10 МБ.'],
+    ['The file field must not be greater than 10240 kilobytes.', 'Размер файла не должен превышать 10 МБ.'],
+    ['Message or file is required', 'Нужно добавить текст сообщения или файл.'],
+    ['Join room before sending messages', 'Сначала войдите в комнату, затем отправляйте сообщения.'],
+    ['Room not found', 'Комната не найдена.'],
+    ['Participant not found', 'Участник не найден.'],
+  ]);
+
+  return dictionary.get(text) || text;
+};
+
 const Dashboard = () => {
   const { user, token: authToken, logout, refreshProfile } = useAuth();
   const [searchParams] = useSearchParams();
@@ -15,9 +52,9 @@ const Dashboard = () => {
 
   const [userName, setUserName] = useState('');
   const [roomName, setRoomName] = useState('');
-  const [roomCodeInput, setRoomCodeInput] = useState(roomParam || '');
+  const [roomCodeInput, setRoomCodeInput] = useState(() => roomParam || readStoredValue(ROOM_CODE_STORAGE_KEY));
   const [activeRoom, setActiveRoom] = useState(null);
-  const [shareLink, setShareLink] = useState('');
+  const [shareLink, setShareLink] = useState(() => readStoredValue(SHARE_LINK_STORAGE_KEY));
   const [copyStatus, setCopyStatus] = useState('');
   const [sharebarOpen, setSharebarOpen] = useState(false);
   const [loadingCreate, setLoadingCreate] = useState(false);
@@ -27,14 +64,17 @@ const Dashboard = () => {
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileError, setProfileError] = useState('');
   const [profileSuccess, setProfileSuccess] = useState('');
-  const [profileForm, setProfileForm] = useState({ name: '', login: '', email: '' });
+  const [profileForm, setProfileForm] = useState(() => getProfileFormFromUser(user));
   const [error, setError] = useState('');
+  const [chatError, setChatError] = useState('');
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [remoteParticipants, setRemoteParticipants] = useState([]);
   const [localStream, setLocalStream] = useState(null);
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [videoEnabled, setVideoEnabled] = useState(true);
+  const [handRaised, setHandRaised] = useState(false);
+  const [handNotice, setHandNotice] = useState('');
   const [audioInputs, setAudioInputs] = useState([]);
   const [videoInputs, setVideoInputs] = useState([]);
   const [selectedAudioInput, setSelectedAudioInput] = useState('');
@@ -43,6 +83,7 @@ const Dashboard = () => {
   const [connectingRoom, setConnectingRoom] = useState(false);
   const [focusedPeerId, setFocusedPeerId] = useState(null); // 'local' | peerId | null
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [imagePreview, setImagePreview] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(null); // 'chat' | 'users' | null
   const [moreOpen, setMoreOpen] = useState(false);
   const [isOrganizer, setIsOrganizer] = useState(false);
@@ -55,6 +96,7 @@ const Dashboard = () => {
   const consumerByProducerRef = useRef(new Map());
   const remoteByPeerRef = useRef(new Map());
   const localProducersRef = useRef([]);
+  const localStreamRef = useRef(null);
   const micProducerRef = useRef(null);
   const camProducerRef = useRef(null);
   const screenTrackRef = useRef(null);
@@ -69,12 +111,13 @@ const Dashboard = () => {
   const audioPickerRef = useRef(null);
   const videoPickerRef = useRef(null);
   const fileInputRef = useRef(null);
+  const handNoticeTimerRef = useRef(null);
 
   const signalingUrl = import.meta.env.VITE_MEDIASOUP_SIGNALING_URL || 'http://localhost:4001';
+  const requireAuthForCalls = String(import.meta.env.VITE_REQUIRE_AUTH_FOR_CALLS ?? 'false') === 'true';
   const currentDisplayName = user ? (user?.name || user?.login || 'Пользователь') : (userName || 'Гость');
 
   const emojiPickerTheme = useMemo(() => 'light', []);
-  const [emojiPanelStyle, setEmojiPanelStyle] = useState(null);
 
   const formatBytes = (bytes) => {
     const value = Number(bytes);
@@ -125,6 +168,8 @@ const Dashboard = () => {
     return `${origin}/${s.replace(/^\/+/, '')}`;
   };
 
+  const currentUserAvatarUrl = resolveAttachmentUrl(user?.avatar_url || '');
+
   const formatAttachmentDisplayName = (name) => {
     let s = String(name || '').trim();
     if (!s) return 'Файл';
@@ -157,17 +202,8 @@ const Dashboard = () => {
   };
 
   useEffect(() => {
-    if (roomParam) setRoomCodeInput(roomParam);
-  }, [roomParam]);
-
-  useEffect(() => {
-    if (!user) return;
-    setProfileForm({
-      name: user?.name || '',
-      login: user?.login || '',
-      email: user?.email || '',
-    });
-  }, [user]);
+    localStreamRef.current = localStream;
+  }, [localStream]);
 
   const appBaseUrl = (import.meta.env.VITE_APP_BASE_URL || window.location.origin).replace(/\/+$/, '');
   const buildCallLink = (roomUuid) => `${appBaseUrl}/guest?room=${encodeURIComponent(roomUuid)}`;
@@ -191,6 +227,31 @@ const Dashboard = () => {
     if (match) return match[1];
     return trimmed;
   };
+
+  useEffect(() => {
+    if (!roomParam) return;
+    setRoomCodeInput(roomParam);
+  }, [roomParam]);
+
+  useEffect(() => {
+    try {
+      const value = roomCodeInput.trim();
+      if (value) localStorage.setItem(ROOM_CODE_STORAGE_KEY, value);
+      else localStorage.removeItem(ROOM_CODE_STORAGE_KEY);
+    } catch {
+      // ignore storage errors
+    }
+  }, [roomCodeInput]);
+
+  useEffect(() => {
+    try {
+      const value = shareLink.trim();
+      if (value) localStorage.setItem(SHARE_LINK_STORAGE_KEY, value);
+      else localStorage.removeItem(SHARE_LINK_STORAGE_KEY);
+    } catch {
+      // ignore storage errors
+    }
+  }, [shareLink]);
 
   const handleCopy = async () => {
     if (!shareLink) return;
@@ -228,7 +289,7 @@ const Dashboard = () => {
       });
     });
 
-  const refreshDevices = async () => {
+  const refreshDevices = useCallback(async () => {
     if (!navigator.mediaDevices?.enumerateDevices) return;
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
@@ -246,15 +307,22 @@ const Dashboard = () => {
     } catch {
       // noop: browser may block before first media permission.
     }
-  };
+  }, [selectedAudioInput, selectedVideoInput]);
 
-  const closeRoomConnections = () => {
+  const closeRoomConnections = useCallback(() => {
     setFocusedPeerId(null);
     setEmojiOpen(false);
+    setImagePreview(null);
     setSidebarOpen(null);
     setMoreOpen(false);
     setDevicePickerOpen(null);
     setIsOrganizer(false);
+    setHandRaised(false);
+    setHandNotice('');
+    if (handNoticeTimerRef.current) {
+      window.clearTimeout(handNoticeTimerRef.current);
+      handNoticeTimerRef.current = null;
+    }
     for (const { consumer } of consumerByProducerRef.current.values()) {
       consumer.close();
     }
@@ -288,13 +356,14 @@ const Dashboard = () => {
     remoteByPeerRef.current.clear();
     setRemoteParticipants([]);
 
-    if (localStream) {
-      localStream.getTracks().forEach((track) => track.stop());
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => track.stop());
+      localStreamRef.current = null;
     }
     setLocalStream(null);
     setChatMessages([]);
     setChatInput('');
-  };
+  }, []);
 
   const consumeProducer = async (producerMeta, roomIdOverride = null) => {
     const socket = socketRef.current;
@@ -339,12 +408,14 @@ const Dashboard = () => {
       displayName,
       avatarUrl: data.avatarUrl || producerMeta?.avatarUrl || null,
       cameraEnabled: data.cameraEnabled !== false && producerMeta?.cameraEnabled !== false,
+      handRaised: data.handRaised === true || producerMeta?.handRaised === true,
       videoStream: null,
       audioStream: null,
     };
     current.displayName = displayName;
     current.avatarUrl = data.avatarUrl || producerMeta?.avatarUrl || current.avatarUrl || null;
     current.cameraEnabled = data.cameraEnabled !== false && producerMeta?.cameraEnabled !== false;
+    current.handRaised = data.handRaised === true || producerMeta?.handRaised === true || current.handRaised === true;
     if (kind === 'audio') current.audioStream = stream;
     else current.videoStream = stream;
     remoteByPeerRef.current.set(peerId, current);
@@ -368,7 +439,7 @@ const Dashboard = () => {
 
   const connectToRoom = async (roomId, displayName) => {
     setError('');
-    if (import.meta.env.VITE_REQUIRE_AUTH_FOR_CALLS !== 'false' && !authToken) {
+    if (requireAuthForCalls && !authToken) {
       setError('Войдите в аккаунт, чтобы участвовать в звонке.');
       return;
     }
@@ -379,9 +450,9 @@ const Dashboard = () => {
       const socket = io(signalingUrl, { transports: ['websocket'] });
       socketRef.current = socket;
 
-      socket.on('newProducer', async ({ producerId, peerId, displayName: producerDisplayName, avatarUrl, cameraEnabled }) => {
+      socket.on('newProducer', async ({ producerId, peerId, displayName: producerDisplayName, avatarUrl, cameraEnabled, handRaised }) => {
         try {
-          await consumeProducer({ producerId, peerId, displayName: producerDisplayName, avatarUrl, cameraEnabled }, roomId);
+          await consumeProducer({ producerId, peerId, displayName: producerDisplayName, avatarUrl, cameraEnabled, handRaised }, roomId);
         } catch (err) {
           setError(err.message || 'Ошибка получения нового потока');
         }
@@ -393,6 +464,30 @@ const Dashboard = () => {
         peer.cameraEnabled = cameraEnabled !== false;
         remoteByPeerRef.current.set(peerId, peer);
         setRemoteParticipants(Array.from(remoteByPeerRef.current.values()));
+      });
+
+      socket.on('peerHandRaise', ({ peerId, handRaised: raised }) => {
+        if (peerId === socket.id) {
+          setHandRaised(raised === true);
+          return;
+        }
+        const peer = remoteByPeerRef.current.get(peerId);
+        if (!peer) return;
+        const wasRaised = peer.handRaised === true;
+        peer.handRaised = raised === true;
+        remoteByPeerRef.current.set(peerId, peer);
+        setRemoteParticipants(Array.from(remoteByPeerRef.current.values()));
+        if (!wasRaised && raised === true) {
+          const peerName = peer.displayName || 'Участник';
+          setHandNotice(`${peerName} поднял руку`);
+          if (handNoticeTimerRef.current) {
+            window.clearTimeout(handNoticeTimerRef.current);
+          }
+          handNoticeTimerRef.current = window.setTimeout(() => {
+            setHandNotice('');
+            handNoticeTimerRef.current = null;
+          }, 2600);
+        }
       });
 
       socket.on('producerClosed', ({ producerId }) => {
@@ -435,7 +530,7 @@ const Dashboard = () => {
       const joinData = await requestSocket(socket, 'joinRoom', {
         roomId,
         displayName,
-        avatarUrl: user?.avatar_url || null,
+        avatarUrl: currentUserAvatarUrl || null,
         accessToken: authToken || null,
       });
       setIsOrganizer(Boolean(joinData?.isOrganizer));
@@ -481,6 +576,7 @@ const Dashboard = () => {
       stream.getVideoTracks().forEach((track) => {
         track.enabled = false;
       });
+      localStreamRef.current = stream;
       setLocalStream(stream);
       setAudioEnabled(false);
       setVideoEnabled(false);
@@ -526,6 +622,7 @@ const Dashboard = () => {
       if (!prev) return prev;
       const stream = new MediaStream(prev.getTracks().filter((track) => track.kind !== kind));
       stream.addTrack(nextTrack);
+      localStreamRef.current = stream;
       return stream;
     });
   };
@@ -654,8 +751,9 @@ const Dashboard = () => {
     try {
       await requestSocket(socket, 'sendMessage', { roomId, text });
       setChatInput('');
+      setChatError('');
     } catch (err) {
-      setError(err?.message || 'Не удалось отправить сообщение.');
+      setChatError(err?.message || 'Не удалось отправить сообщение.');
     }
   };
 
@@ -664,7 +762,7 @@ const Dashboard = () => {
     const roomId = activeRoomIdRef.current;
     if (!file || !roomId) return;
     if (!authToken) {
-      setError('Для отправки файлов нужно войти в аккаунт.');
+      setChatError('Для отправки файлов нужно войти в аккаунт.');
       return;
     }
 
@@ -674,9 +772,7 @@ const Dashboard = () => {
       formData.append('message', chatInput.trim() || '');
       formData.append('file', file);
 
-      const response = await api.post(`/rooms/${roomId}/messages`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const response = await api.post(`/rooms/${roomId}/messages`, formData);
 
       const saved = response.data;
       setChatMessages((prev) => [...prev, saved]);
@@ -684,8 +780,9 @@ const Dashboard = () => {
         socket.emit('broadcastMessage', { roomId, message: saved }, () => {});
       }
       setChatInput('');
+      setChatError('');
     } catch (err) {
-      setError(err?.response?.data?.message || err?.message || 'Не удалось отправить файл.');
+      setChatError(localizeApiMessage(err?.response?.data?.message || err?.message || 'Не удалось отправить файл.'));
     }
   };
 
@@ -704,7 +801,7 @@ const Dashboard = () => {
       setRoomCodeInput(roomId);
       await connectToRoom(roomId, displayName);
     } catch (err) {
-      setError(err?.response?.data?.message || err?.message || 'Ошибка создания комнаты.');
+      setError(localizeApiMessage(err?.response?.data?.message || err?.message || 'Ошибка создания комнаты.'));
     } finally {
       setLoadingCreate(false);
     }
@@ -764,7 +861,27 @@ const Dashboard = () => {
     }
   };
 
-  useEffect(() => () => closeRoomConnections(), []);
+  const toggleHandRaise = async () => {
+    const socket = socketRef.current;
+    const roomId = activeRoomIdRef.current;
+    if (!socket || !roomId) return;
+    try {
+      const next = !handRaised;
+      await requestSocket(socket, 'updateHandRaise', { roomId, handRaised: next });
+      setHandRaised(next);
+    } catch {
+      setError('Не удалось обновить статус поднятой руки.');
+    }
+  };
+
+  useEffect(() => () => closeRoomConnections(), [closeRoomConnections]);
+
+  useEffect(() => () => {
+    if (handNoticeTimerRef.current) {
+      window.clearTimeout(handNoticeTimerRef.current);
+      handNoticeTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     if (!emojiOpen) return undefined;
@@ -777,6 +894,17 @@ const Dashboard = () => {
     window.addEventListener('pointerdown', onPointerDown);
     return () => window.removeEventListener('pointerdown', onPointerDown);
   }, [emojiOpen]);
+
+  useEffect(() => {
+    if (!imagePreview) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setImagePreview(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [imagePreview]);
 
   useEffect(() => {
     if (!moreOpen) return undefined;
@@ -804,45 +932,26 @@ const Dashboard = () => {
   }, [devicePickerOpen]);
 
   useEffect(() => {
-    if (!emojiOpen) {
-      setEmojiPanelStyle(null);
-      return undefined;
+    const refreshTask = window.setTimeout(() => {
+      void refreshDevices();
+    }, 0);
+    if (!navigator.mediaDevices?.addEventListener) {
+      return () => window.clearTimeout(refreshTask);
     }
-    const update = () => {
-      const btn = emojiButtonRef.current;
-      if (!btn) return;
-      const rect = btn.getBoundingClientRect();
-      const width = Math.min(360, Math.max(280, window.innerWidth - 24));
-      const left = Math.min(window.innerWidth - 12 - width, Math.max(12, rect.right - width));
-      const height = 360;
-      const top = Math.max(12, rect.top - 10 - height);
-      setEmojiPanelStyle({ position: 'fixed', left, top, width, zIndex: 1000 });
-    };
-    update();
-    window.addEventListener('resize', update);
-    window.addEventListener('scroll', update, true);
-    return () => {
-      window.removeEventListener('resize', update);
-      window.removeEventListener('scroll', update, true);
-    };
-  }, [emojiOpen]);
-
-  useEffect(() => {
-    refreshDevices();
-    if (!navigator.mediaDevices?.addEventListener) return undefined;
     const onDevicesChange = () => {
-      refreshDevices();
+      void refreshDevices();
     };
     navigator.mediaDevices.addEventListener('devicechange', onDevicesChange);
     return () => {
+      window.clearTimeout(refreshTask);
       navigator.mediaDevices.removeEventListener('devicechange', onDevicesChange);
     };
-  }, []);
+  }, [refreshDevices]);
 
   const handleAvatarUpload = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    setError('');
+    setProfileError('');
     setUploadingAvatar(true);
     try {
       const formData = new FormData();
@@ -850,7 +959,9 @@ const Dashboard = () => {
       await authApi.updateProfile(formData);
       await refreshProfile();
     } catch (err) {
-      setError(err?.response?.data?.message || 'Не удалось загрузить аватар.');
+      const details = err?.response?.data?.errors?.avatar?.[0];
+      const message = localizeApiMessage(details || err?.response?.data?.message || 'Не удалось загрузить аватар.');
+      setProfileError(message);
     } finally {
       setUploadingAvatar(false);
       event.target.value = '';
@@ -859,11 +970,7 @@ const Dashboard = () => {
 
   const openProfile = () => {
     if (user) {
-      setProfileForm({
-        name: user?.name || '',
-        login: user?.login || '',
-        email: user?.email || '',
-      });
+      setProfileForm(getProfileFormFromUser(user));
     }
     setProfileError('');
     setProfileSuccess('');
@@ -885,7 +992,7 @@ const Dashboard = () => {
       await refreshProfile();
       setProfileSuccess('Профиль обновлен');
     } catch (err) {
-      setProfileError(err?.response?.data?.message || 'Не удалось сохранить профиль.');
+      setProfileError(localizeApiMessage(err?.response?.data?.message || 'Не удалось сохранить профиль.'));
     } finally {
       setProfileSaving(false);
     }
@@ -908,6 +1015,11 @@ const Dashboard = () => {
             <div className="room-topbar__code">{activeRoom.roomId}</div>
           </div>
           <div className="room-topbar__right">
+            {isOrganizer && (
+              <span className="room-topbar__organizer-badge" title="У вас есть права организатора">
+                Вы организатор
+              </span>
+            )}
             {focusedPeerId && (
               <button type="button" className="ghost room-topbar__focus-clear" onClick={() => setFocusedPeerId(null)}>
                 Сбросить фокус
@@ -924,7 +1036,9 @@ const Dashboard = () => {
               aria-expanded={sharebarOpen}
               aria-label={sharebarOpen ? 'Свернуть ссылку приглашения' : 'Показать ссылку приглашения'}
             >
-              <span className="room-sharebar__chevron" aria-hidden>▾</span>
+              <span className="room-sharebar__icon" aria-hidden>
+                <LinkIcon />
+              </span>
             </button>
             <div className="room-sharebar__panel">
               <div className="room-sharebar__actions">
@@ -955,6 +1069,7 @@ const Dashboard = () => {
           </div>
         )}
         <div className="call-shell">
+          {handNotice && <div className="room-toast room-toast--hand">{handNotice}</div>}
           <div className="call-main">
             <div
               className={[
@@ -970,6 +1085,7 @@ const Dashboard = () => {
                 title={focusedRemote.displayName || 'Участник'}
                 avatarUrl={focusedRemote.avatarUrl || null}
                 forcePlaceholder={focusedRemote.cameraEnabled === false}
+                handRaised={focusedRemote.handRaised === true}
                 variant="spotlight"
                 isFocused
                 onFocus={() => setFocusedPeerId(focusedRemote.peerId)}
@@ -980,8 +1096,9 @@ const Dashboard = () => {
               stream={localStream}
               title={`${activeRoom.displayName} (Вы)`}
               muted
-              avatarUrl={user?.avatar_url || null}
+              avatarUrl={currentUserAvatarUrl || null}
               forcePlaceholder={!videoEnabled && !sharingScreen}
+              handRaised={handRaised}
               variant={focusedPeerId === 'local' ? 'spotlight' : (sharingScreen ? 'spotlight' : 'local')}
               isFocused={focusedPeerId === 'local'}
               onFocus={() => setFocusedPeerId('local')}
@@ -994,6 +1111,7 @@ const Dashboard = () => {
                 title={participant.displayName || 'Участник'}
                 avatarUrl={participant.avatarUrl || null}
                 forcePlaceholder={participant.cameraEnabled === false}
+                handRaised={participant.handRaised === true}
                 variant={focusedPeerId === participant.peerId ? 'spotlight' : 'remote'}
                 isFocused={focusedPeerId === participant.peerId}
                 onFocus={() => setFocusedPeerId(participant.peerId)}
@@ -1114,6 +1232,15 @@ const Dashboard = () => {
 
                 <button
                   type="button"
+                  className={`dock-btn dock-btn--ghost ${handRaised ? 'is-active' : ''}`}
+                  onClick={toggleHandRaise}
+                  title={handRaised ? 'Опустить руку' : 'Поднять руку'}
+                >
+                  <HandIcon />
+                </button>
+
+                <button
+                  type="button"
                   className={`dock-btn dock-btn--ghost ${sidebarOpen === 'users' ? 'is-active' : ''}`}
                   onClick={() => setSidebarOpen((prev) => (prev === 'users' ? null : 'users'))}
                   title="Участники"
@@ -1212,9 +1339,9 @@ const Dashboard = () => {
                   <div className="participants">
                     <div className="participants__meta">В звонке · {remoteParticipants.length + 1}</div>
                     <div className="participants__list">
-                      <ParticipantRow name={`${activeRoom.displayName} (Вы)`} avatarUrl={user?.avatar_url || null} muted={!audioEnabled} />
+                      <ParticipantRow name={`${activeRoom.displayName} (Вы)`} avatarUrl={currentUserAvatarUrl || null} muted={!audioEnabled} raised={handRaised} />
                       {remoteParticipants.map((p) => (
-                        <ParticipantRow key={p.peerId} name={p.displayName || 'Участник'} avatarUrl={p.avatarUrl || null} muted={false} />
+                        <ParticipantRow key={p.peerId} name={p.displayName || 'Участник'} avatarUrl={p.avatarUrl || null} muted={false} raised={p.handRaised === true} />
                       ))}
                     </div>
                   </div>
@@ -1246,11 +1373,10 @@ const Dashboard = () => {
                             <span className="room-chat__text">{message.message}</span>
                             {message.attachment_url && showAsImage && (
                               <div className="attachment-card attachment-card--media">
-                                <a
-                                  href={resolvedUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
+                                <button
+                                  type="button"
                                   className="attachment-card__image-link"
+                                  onClick={() => setImagePreview({ url: resolvedUrl, name: displayName })}
                                   title="Открыть в полном размере"
                                 >
                                   <img
@@ -1260,7 +1386,7 @@ const Dashboard = () => {
                                     decoding="async"
                                     className="attachment-card__image"
                                   />
-                                </a>
+                                </button>
                                 <div className="attachment-card__media-footer">
                                   <div className="attachment-card__meta attachment-card__meta--footer">
                                     <div className="attachment-card__name">{displayName}</div>
@@ -1308,6 +1434,7 @@ const Dashboard = () => {
                         })
                       )}
                     </div>
+                    {chatError && <div className="form-error room-chat__error">{chatError}</div>}
                     <div className="room-chat__composer room-chat__composer--sidebar">
                       <input
                         ref={chatInputRef}
@@ -1342,10 +1469,9 @@ const Dashboard = () => {
                         </button>
                         {emojiOpen && (
                           <div
-                            className="emoji-picker__panel emoji-picker__panel--fixed"
+                            className="emoji-picker__panel"
                             role="dialog"
                             aria-label="Выбор эмодзи"
-                            style={emojiPanelStyle || undefined}
                           >
                             <EmojiPicker
                               onEmojiClick={(emojiData) => {
@@ -1363,7 +1489,12 @@ const Dashboard = () => {
                           </div>
                         )}
                       </div>
-                      <button type="button" className="secondary-btn" onClick={sendChatMessage} disabled={!chatInput.trim()}>
+                      <button
+                        type="button"
+                        className="secondary-btn room-chat__send"
+                        onClick={sendChatMessage}
+                        disabled={!chatInput.trim()}
+                      >
                         Отправить
                       </button>
                     </div>
@@ -1373,6 +1504,16 @@ const Dashboard = () => {
             </aside>
           )}
         </div>
+        {imagePreview && (
+          <div className="image-preview-modal" role="dialog" aria-modal="true" onClick={() => setImagePreview(null)}>
+            <div className="image-preview-modal__content" onClick={(event) => event.stopPropagation()}>
+              <button type="button" className="image-preview-modal__close" onClick={() => setImagePreview(null)} aria-label="Закрыть">
+                ×
+              </button>
+              <img src={imagePreview.url} alt={imagePreview.name || 'Изображение'} className="image-preview-modal__image" />
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -1388,14 +1529,19 @@ const Dashboard = () => {
           {user ? (
             <>
               <div className="profile-chip">
-                {user?.avatar_url ? (
-                  <img src={user.avatar_url} alt="Аватар" className="profile-chip__avatar" />
+                {currentUserAvatarUrl ? (
+                  <img src={currentUserAvatarUrl} alt="Аватар" className="profile-chip__avatar" />
                 ) : (
                   <span className="profile-chip__fallback">
                     {(user?.name || user?.login || 'U').slice(0, 1).toUpperCase()}
                   </span>
                 )}
               </div>
+              {user?.role === 'admin' && (
+                <Link className="secondary-btn landing__admin-link" to="/admin">
+                  Админка
+                </Link>
+              )}
               <button className="secondary-btn" onClick={openProfile}>Профиль</button>
               <button className="secondary-btn" onClick={logout}>Выйти</button>
             </>
@@ -1522,8 +1668,8 @@ const Dashboard = () => {
               <button type="button" className="ghost" onClick={() => setProfileOpen(false)}>Закрыть</button>
             </div>
             <div className="profile-modal__avatar-block">
-              {user?.avatar_url ? (
-                <img src={user.avatar_url} alt="Аватар" className="profile-modal__avatar" />
+              {currentUserAvatarUrl ? (
+                <img src={currentUserAvatarUrl} alt="Аватар" className="profile-modal__avatar" />
               ) : (
                 <span className="profile-modal__avatar profile-modal__avatar--fallback">
                   {(user?.name || user?.login || 'U').slice(0, 1).toUpperCase()}
@@ -1578,6 +1724,7 @@ const VideoTile = ({
   variant = 'remote',
   avatarUrl = null,
   forcePlaceholder = false,
+  handRaised = false,
   onFocus,
   isFocused = false,
 }) => {
@@ -1618,6 +1765,11 @@ const VideoTile = ({
           ) : (
             <span>{title?.slice(0, 1)?.toUpperCase() || 'U'}</span>
           )}
+        </div>
+      )}
+      {handRaised && (
+        <div className="video-tile__hand" title="Рука поднята" aria-label="Рука поднята">
+          <HandIcon />
         </div>
       )}
       <div className="video-tile__label">{title}</div>
@@ -1724,13 +1876,29 @@ const MoreIcon = () => (
   </svg>
 );
 
+const HandIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M8 11V4a1 1 0 0 1 2 0v7" />
+    <path d="M11 11V3a1 1 0 0 1 2 0v8" />
+    <path d="M14 11V5a1 1 0 0 1 2 0v8" />
+    <path d="M17 13V8a1 1 0 0 1 2 0v7c0 3.3-2.7 6-6 6h-1.5a6.5 6.5 0 0 1-5.8-3.5L4 14.5a1.2 1.2 0 1 1 2-1.3L8 16" />
+  </svg>
+);
+
+const LinkIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07l-1.22 1.22" />
+    <path d="M14 11a5 5 0 0 0-7.07 0l-2.12 2.12a5 5 0 0 0 7.07 7.07l1.22-1.22" />
+  </svg>
+);
+
 const AttachmentIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <path d="M21.44 11.05l-8.49 8.49a5 5 0 0 1-7.07-7.07l8.49-8.49a3.5 3.5 0 0 1 4.95 4.95l-8.5 8.49a2 2 0 0 1-2.83-2.83l8.01-8.01" />
   </svg>
 );
 
-const ParticipantRow = ({ name, avatarUrl, muted }) => {
+const ParticipantRow = ({ name, avatarUrl, muted, raised = false }) => {
   const initials = String(name || 'U')
     .split(' ')
     .filter(Boolean)
@@ -1749,8 +1917,8 @@ const ParticipantRow = ({ name, avatarUrl, muted }) => {
       <div className="participant-row__meta">
         <div className="participant-row__name">{name}</div>
       </div>
-      <div className={`participant-row__badge ${muted ? 'is-muted' : ''}`} title={muted ? 'Микрофон выключен' : 'Микрофон включен'}>
-        <MicIcon />
+      <div className={`participant-row__badge ${raised ? 'is-raised' : (muted ? 'is-muted' : '')}`} title={raised ? 'Рука поднята' : (muted ? 'Микрофон выключен' : 'Микрофон включен')}>
+        {raised ? <HandIcon /> : <MicIcon />}
       </div>
     </div>
   );
