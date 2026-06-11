@@ -109,7 +109,7 @@ app.get("/metrics", (req, res) => {
       ? req.headers.authorization.slice(7)
       : "";
     if (bearer !== secret) {
-      res.status(401).json({ error: "Unauthorized" });
+      res.status(401).json({ error: "Неавторизован" });
       return;
     }
   }
@@ -143,7 +143,7 @@ async function createWorker() {
   });
 
   nextWorker.on("died", () => {
-    console.error("mediasoup worker died, exiting in 2 seconds...");
+    console.error("воркер mediasoup завершился ошибкой, выход через 2 секунды...");
     setTimeout(() => process.exit(1), 2000);
   });
 
@@ -152,7 +152,7 @@ async function createWorker() {
 
 function pickWorker() {
   if (workers.length === 0) {
-    throw new Error("No mediasoup workers available");
+    throw new Error("Нет доступных воркеров mediasoup");
   }
   const idx = workerPickSeq % workers.length;
   workerPickSeq += 1;
@@ -215,7 +215,7 @@ async function destroyRoom(roomId) {
 async function validateRoomAccess({ roomId, accessToken }) {
   if (!accessToken) {
     if (requireRoomAuth) {
-      throw new Error("Authorization token is required to join this room");
+      throw new Error("Для входа в эту комнату требуется токен авторизации");
     }
     return null;
   }
@@ -288,7 +288,7 @@ async function fetchRoomMessages({ roomId, accessToken }) {
 
 async function saveRoomMessage({ roomId, accessToken, displayName, text }) {
   if (!accessToken) {
-    throw new Error("Authorization token is required to send messages");
+    throw new Error("Для отправки сообщений требуется токен авторизации");
   }
   const response = await fetch(`${laravelApiUrl}/rooms/${roomId}/messages`, {
     method: "POST",
@@ -376,11 +376,11 @@ io.on("connection", (socket) => {
 
   socket.on("broadcastMessage", ({ roomId, message }, cb) => {
     try {
-      if (!roomId) throw new Error("Room not found");
+      if (!roomId) throw new Error("Комната не найдена");
       const room = rooms.get(roomId);
-      if (!room) throw new Error("Room not found");
-      if (!room.peers.has(socket.id)) throw new Error("Peer not found");
-      if (!message) throw new Error("Message is required");
+      if (!room) throw new Error("Комната не найдена");
+      if (!room.peers.has(socket.id)) throw new Error("Участник не найден");
+      if (!message) throw new Error("Сообщение обязательно для отправки");
       // Do not echo back to sender (client already appended optimistically).
       socket.to(roomId).emit("newMessage", message);
       cb?.({ ok: true });
@@ -393,8 +393,8 @@ io.on("connection", (socket) => {
     try {
       const room = rooms.get(roomId);
       const peer = room?.peers.get(socket.id);
-      if (!room || !peer) throw new Error("Room/peer not found");
-      if (room.ownerPeerId !== socket.id) throw new Error("Only organizer can end the room");
+      if (!room || !peer) throw new Error("Комната или участник не найдены");
+      if (room.ownerPeerId !== socket.id) throw new Error("Только организатор может завершить встречу");
 
       // Try to close room in Laravel (optional)
       if (peer.accessToken) {
@@ -429,7 +429,7 @@ io.on("connection", (socket) => {
   socket.on("createWebRtcTransport", async ({ roomId }, cb) => {
     try {
       const room = rooms.get(roomId);
-      if (!room) throw new Error("Room not found");
+      if (!room) throw new Error("Комната не найдена");
 
       const transport = await room.router.createWebRtcTransport({
         listenIps: [
@@ -466,7 +466,7 @@ io.on("connection", (socket) => {
       const room = rooms.get(roomId);
       const transport = room?.peers.get(socket.id)?.transports.get(transportId);
 
-      if (!transport) throw new Error("Transport not found");
+      if (!transport) throw new Error("Транспорт не найден");
 
       await transport.connect({ dtlsParameters });
       cb({ connected: true });
@@ -480,7 +480,7 @@ io.on("connection", (socket) => {
       const room = rooms.get(roomId);
       const peer = room?.peers.get(socket.id);
       const transport = peer?.transports.get(transportId);
-      if (!room || !peer || !transport) throw new Error("Room/peer/transport not found");
+      if (!room || !peer || !transport) throw new Error("Комната, участник или транспорт не найдены");
 
       // Client starts sending microphone/camera through this transport.
       const producer = await transport.produce({ kind, rtpParameters });
@@ -518,7 +518,7 @@ io.on("connection", (socket) => {
   socket.on("getProducers", ({ roomId }, cb) => {
     try {
       const room = rooms.get(roomId);
-      if (!room) throw new Error("Room not found");
+      if (!room) throw new Error("Комната не найдена");
 
       const producers = [];
       for (const [producerId, entry] of room.producers.entries()) {
@@ -547,13 +547,13 @@ io.on("connection", (socket) => {
       const room = rooms.get(roomId);
       const peer = room?.peers.get(socket.id);
       const transport = peer?.transports.get(transportId);
-      if (!room || !peer || !transport) throw new Error("Room/peer/transport not found");
+      if (!room || !peer || !transport) throw new Error("Комната, участник или транспорт не найдены");
 
       const producerEntry = room.producers.get(producerId);
-      if (!producerEntry) throw new Error("Producer not found");
+      if (!producerEntry) throw new Error("Производитель (producer) не найден");
 
       if (!room.router.canConsume({ producerId, rtpCapabilities })) {
-        throw new Error("Client cannot consume this producer");
+        throw new Error("Клиент не может потреблять этот медиа-поток");
       }
 
       // Start paused, then client explicitly resumes when media element is ready.
@@ -594,7 +594,7 @@ io.on("connection", (socket) => {
   socket.on("resumeConsumer", async ({ roomId, consumerId }, cb) => {
     try {
       const consumer = rooms.get(roomId)?.peers.get(socket.id)?.consumers.get(consumerId);
-      if (!consumer) throw new Error("Consumer not found");
+      if (!consumer) throw new Error("Потребитель (consumer) не найден");
 
       await consumer.resume();
       cb({ resumed: true });
@@ -619,10 +619,10 @@ io.on("connection", (socket) => {
   socket.on("sendMessage", async ({ roomId, text }, cb) => {
     try {
       const messageText = String(text || "").trim();
-      if (!messageText) throw new Error("Message cannot be empty");
+      if (!messageText) throw new Error("Сообщение не может быть пустым");
 
       const peer = rooms.get(roomId)?.peers.get(socket.id);
-      if (!peer) throw new Error("Peer not found");
+      if (!peer) throw new Error("Участник не найден");
 
       const saved = await saveRoomMessage({
         roomId,
@@ -642,7 +642,7 @@ io.on("connection", (socket) => {
     try {
       const room = rooms.get(roomId);
       const peer = room?.peers.get(socket.id);
-      if (!room || !peer) throw new Error("Room/peer not found");
+      if (!room || !peer) throw new Error("Комната или участник не найдены");
 
       peer.cameraEnabled = cameraEnabled !== false;
 
@@ -666,7 +666,7 @@ io.on("connection", (socket) => {
     try {
       const room = rooms.get(roomId);
       const peer = room?.peers.get(socket.id);
-      if (!room || !peer) throw new Error("Room/peer not found");
+      if (!room || !peer) throw new Error("Комната или участник не найдены");
 
       peer.handRaised = handRaised === true;
 
@@ -745,4 +745,9 @@ async function start() {
 start().catch((error) => {
   console.error(error);
   process.exit(1);
+});
+nsole.error(error);
+  process.exit(1);
+});
+ocess.exit(1);
 });

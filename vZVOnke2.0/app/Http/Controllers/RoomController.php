@@ -15,7 +15,7 @@ class RoomController extends Controller
     {
         $room = Room::where('uuid', $uuid)->first();
         if (!$room) {
-            abort(404, 'Room not found');
+            abort(404, 'Комната не найдена');
         }
         return $room;
     }
@@ -72,7 +72,7 @@ class RoomController extends Controller
             'joined_at' => now(),
         ]);
 
-        return response()->json(['message' => 'Room created successfully', 'room' => $room], 201);
+        return response()->json(['message' => 'Комната успешно создана', 'room' => $room], 201);
     }
 
     public function join(Request $request, string $uuid)
@@ -81,7 +81,7 @@ class RoomController extends Controller
         $user = $request->user();
 
         if ($room->status === 'closed') {
-            return response()->json(['message' => 'Room is closed'], 403);
+            return response()->json(['message' => 'Комната закрыта'], 403);
         }
 
         $participant = RoomParticipant::where('room_id', $room->id)->where('user_id', $user->id)->whereNull('left_at')->first();
@@ -106,10 +106,10 @@ class RoomController extends Controller
 
         $participant = RoomParticipant::where('room_id', $room->id)->where('user_id', $user->id)->whereNull('left_at')->first();
         if (!$participant) {
-            return response()->json(['message' => 'Participant not found'], 404);
+            return response()->json(['message' => 'Участник не найден'], 404);
         }
         $participant->update(['left_at' => now()]);
-        return response()->json(['message' => 'Participant left successfully'], 200);
+        return response()->json(['message' => 'Вы успешно покинули комнату'], 200);
     }
 
     public function close(Request $request, string $uuid)
@@ -118,7 +118,7 @@ class RoomController extends Controller
         $room = $this->findRoomOrFail($uuid);
 
         if ($room->owner_id !== $user->id) {
-            return response()->json(['message' => 'You are not the owner of this room'], 403);
+            return response()->json(['message' => 'Вы не являетесь владельцем этой комнаты'], 403);
         }
         $room->update(['status' => 'closed', 'closed_at' => now()]);
 
@@ -127,7 +127,7 @@ class RoomController extends Controller
             $participant->update(['left_at' => now()]);
         }
 
-        return response()->json(['message' => 'Room closed successfully'], 200);
+        return response()->json(['message' => 'Комната успешно закрыта'], 200);
     }
 
     public function closeEmptyByMediasoup(Request $request, string $uuid)
@@ -135,7 +135,7 @@ class RoomController extends Controller
         $room = $this->findRoomOrFail($uuid);
 
         if ($room->status === 'closed') {
-            return response()->json(['message' => 'Room already closed'], 200);
+            return response()->json(['message' => 'Комната уже закрыта'], 200);
         }
 
         $room->update([
@@ -147,7 +147,7 @@ class RoomController extends Controller
             ->whereNull('left_at')
             ->update(['left_at' => now()]);
 
-        return response()->json(['message' => 'Empty room closed successfully'], 200);
+        return response()->json(['message' => 'Пустая комната успешно закрыта'], 200);
     }
 
     public function show(Request $request, string $uuid)
@@ -245,6 +245,13 @@ class RoomController extends Controller
         ]);
 
         return response()->json($message, 201);
+    }
+
+}
+  }
+
+}
+);
     }
 
 }

@@ -12,7 +12,7 @@ class ProfileController extends Controller
     {
         $user = Auth::user();
         if (!$user) {
-            return response()->json(['error' => 'Unauthorized'], 401);
+            return response()->json(['error' => 'Неавторизован'], 401);
         }
 
         return response()->json($user);
@@ -22,7 +22,7 @@ class ProfileController extends Controller
     {
         $user = Auth::user();
         if (!$user) {
-            return response()->json(['error' => 'Unauthorized'], 401);
+            return response()->json(['error' => 'Неавторизован'], 401);
         }
 
         $validated = $request->validate([

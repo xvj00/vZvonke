@@ -92,7 +92,7 @@ export const AuthProvider = ({ children }) => {
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
   if (!ctx) {
-    throw new Error('useAuth must be used within AuthProvider');
+    throw new Error('useAuth должен использоваться внутри AuthProvider');
   }
   return ctx;
 };
