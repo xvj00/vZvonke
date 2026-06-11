@@ -20,6 +20,16 @@ const io = new SocketIOServer(httpServer, {
 app.use(cors());
 app.use(express.json());
 
+// Security Headers
+app.use((req, res, next) => {
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "no-referrer-when-downgrade");
+  res.setHeader("Content-Security-Policy", "frame-ancestors 'self'");
+  next();
+});
+
 function parsePositiveInt(value, fallback) {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;

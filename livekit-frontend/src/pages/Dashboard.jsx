@@ -1585,7 +1585,7 @@ const Dashboard = () => {
                                     className="attachment-card__download attachment-card__download--compact"
                                     href={resolvedUrl}
                                     target="_blank"
-                                    rel="noreferrer"
+                                    rel="noopener noreferrer"
                                     download={displayName}
                                   >
                                     Скачать
@@ -1608,7 +1608,7 @@ const Dashboard = () => {
                                   className="attachment-card__download"
                                   href={resolvedUrl}
                                   target="_blank"
-                                  rel="noreferrer"
+                                  rel="noopener noreferrer"
                                   download={displayName}
                                 >
                                   Скачать
