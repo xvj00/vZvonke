@@ -1,0 +1,109 @@
+# Запуск локально на Windows / macOS / Linux без домена и SSL:
+#
+#   docker compose -f docker-compose.local.yml up --build -d
+#
+# После старта:
+#   Сайт:      http://localhost
+#   Сигналинг: http://localhost:4001
+#
+# WebRTC (камера/микрофон) работает на localhost без HTTPS — браузер разрешает.
+# Если нужно подключить других участников по локальной сети — см. MEDIASOUP_ANNOUNCED_IP ниже.
+
+services:
+  db:
+    image: mysql:8.0-oraclelinux8
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --innodb_buffer_pool_size=128M
+      --max_connections=30
+      --performance_schema=OFF
+    environment:
+      MYSQL_ROOT_PASSWORD: local_root_pass
+      MYSQL_DATABASE: vzvonke
+      MYSQL_USER: vzvonke
+      MYSQL_PASSWORD: local_pass
+    volumes:
+      - mysql_data_local:/var/lib/mysql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -plocal_root_pass || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+
+  laravel:
+    build:
+      context: ./vZVOnke2.0
+    restart: unless-stopped
+    environment:
+      APP_ENV: local
+      APP_DEBUG: true
+      APP_KEY: base64:ЛОКАЛЬНЫЙ_КЛЮЧ_ЗАМЕНИТЕ_НА_РЕАЛЬНЫЙ
+      APP_URL: http://localhost
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: vzvonke
+      DB_USERNAME: vzvonke
+      DB_PASSWORD: local_pass
+      SESSION_DRIVER: database
+      CACHE_STORE: database
+      QUEUE_CONNECTION: sync
+      SANCTUM_STATEFUL_DOMAINS: localhost
+      MEDIASOUP_INTERNAL_SECRET: local_secret_change_me
+    volumes:
+      - laravel_storage_local:/var/www/storage
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile
+      args:
+        VITE_API_URL: /api
+        VITE_APP_BASE_URL: ""
+        # Сигналинг доступен из браузера через localhost
+        VITE_MEDIASOUP_SIGNALING_URL: http://localhost:4001
+        VITE_REQUIRE_AUTH_FOR_CALLS: "true"
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - laravel_storage_local:/mnt/laravel-storage:ro
+    depends_on:
+      - laravel
+
+  mediasoup:
+    build: ./mediasoup-server
+    restart: unless-stopped
+    environment:
+      PORT: 4001
+      MEDIASOUP_LISTEN_IP: 0.0.0.0
+      # localhost — браузер и сервер на одной машине
+      # Если нужно чтобы другие люди по локальной сети подключились —
+      # замените на локальный IP этого компа (например 192.168.1.10)
+      MEDIASOUP_ANNOUNCED_IP: 127.0.0.1
+      LARAVEL_API_URL: http://web/api
+      REQUIRE_ROOM_AUTH: "true"
+      RTC_MIN_PORT: 40000
+      RTC_MAX_PORT: 40099
+      EMPTY_ROOM_GRACE_MS: 30000
+      MAX_PEERS_PER_ROOM: 10
+      MEDIASOUP_NUM_WORKERS: "1"
+      MEDIASOUP_INITIAL_OUTGOING_BITRATE: "800000"
+      MEDIASOUP_INTERNAL_SECRET: local_secret_change_me
+    ports:
+      - "4001:4001/tcp"
+      # Узкий диапазон — 100 UDP портов, быстрый старт
+      - "40000-40099:40000-40099/udp"
+    depends_on:
+      - web
+
+volumes:
+  mysql_data_local:
+  laravel_storage_local:
