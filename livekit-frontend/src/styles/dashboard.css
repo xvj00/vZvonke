@@ -1820,6 +1820,12 @@
   opacity: 1;
 }
 
+@media (hover: none) {
+  .participant-row__actions {
+    opacity: 1;
+  }
+}
+
 .participant-action-btn {
   display: grid;
   place-items: center;

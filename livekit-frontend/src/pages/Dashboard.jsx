@@ -520,6 +520,20 @@ const Dashboard = () => {
         }
       });
 
+      socket.on('peerJoined', ({ peerId, displayName: peerDisplayName, avatarUrl: peerAvatarUrl }) => {
+        if (remoteByPeerRef.current.has(peerId)) return;
+        remoteByPeerRef.current.set(peerId, {
+          peerId, displayName: peerDisplayName || 'Участник', avatarUrl: peerAvatarUrl || null,
+          audioStream: null, videoStream: null, handRaised: false,
+        });
+        setRemoteParticipants(Array.from(remoteByPeerRef.current.values()));
+      });
+
+      socket.on('peerLeft', ({ peerId }) => {
+        remoteByPeerRef.current.delete(peerId);
+        setRemoteParticipants(Array.from(remoteByPeerRef.current.values()));
+      });
+
       socket.on('peerMediaState', ({ peerId, cameraEnabled }) => {
         const peer = remoteByPeerRef.current.get(peerId);
         if (!peer) return;
@@ -705,6 +719,23 @@ const Dashboard = () => {
 
       for (const producerMeta of joinData.producers || []) {
         await consumeProducer(producerMeta, roomId);
+      }
+
+      // Add listener peers (no producers) to participant list
+      for (const peer of joinData.peers || []) {
+        if (!remoteByPeerRef.current.has(peer.peerId)) {
+          remoteByPeerRef.current.set(peer.peerId, {
+            peerId: peer.peerId,
+            displayName: peer.displayName || 'Участник',
+            avatarUrl: peer.avatarUrl || null,
+            audioStream: null,
+            videoStream: null,
+            handRaised: peer.handRaised === true,
+          });
+        }
+      }
+      if ((joinData.peers || []).length > 0) {
+        setRemoteParticipants(Array.from(remoteByPeerRef.current.values()));
       }
       await requestSocket(socket, 'updateMediaState', { roomId, cameraEnabled: false });
       const messagesData = await requestSocket(socket, 'getMessages', { roomId });

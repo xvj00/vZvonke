@@ -430,9 +430,18 @@ io.on("connection", (socket) => {
       }
       socket.join(roomId);
 
+      // Notify existing peers that someone new joined
+      socket.to(roomId).emit("peerJoined", {
+        peerId: socket.id,
+        displayName: displayName || "Участник",
+        avatarUrl: avatarUrl || null,
+      });
+
       const producers = [];
+      const peerProducerIds = new Set();
       for (const [producerId, entry] of room.producers.entries()) {
         if (entry.peerId === socket.id) continue;
+        peerProducerIds.add(entry.peerId);
         producers.push({
           producerId,
           peerId: entry.peerId,
@@ -444,9 +453,23 @@ io.on("connection", (socket) => {
         });
       }
 
+      // Include peers with no producers (listeners) so the joining client shows them
+      const listenerPeers = [];
+      for (const [peerId, peer] of room.peers.entries()) {
+        if (peerId === socket.id) continue;
+        if (peerProducerIds.has(peerId)) continue;
+        listenerPeers.push({
+          peerId,
+          displayName: peer.displayName || "Участник",
+          avatarUrl: peer.avatarUrl || null,
+          handRaised: peer.handRaised === true,
+        });
+      }
+
       cb({
         rtpCapabilities: room.router.rtpCapabilities,
         producers,
+        peers: listenerPeers,
         isOrganizer: room.ownerPeerId === socket.id,
       });
     } catch (error) {
@@ -490,15 +513,13 @@ io.on("connection", (socket) => {
 
       io.to(roomId).emit("roomEnded", { roomId });
 
-      // Disconnect everyone in the room (including organizer)
-      const socketsInRoom = await io.in(roomId).fetchSockets();
-      for (const s of socketsInRoom) {
-        try {
-          s.disconnect(true);
-        } catch {
-          // ignore
+      // Give clients 1.5s to process roomEnded toast, then force-disconnect
+      setTimeout(async () => {
+        const socketsInRoom = await io.in(roomId).fetchSockets();
+        for (const s of socketsInRoom) {
+          try { s.disconnect(true); } catch { /* ignore */ }
         }
-      }
+      }, 1500);
 
       cb({ ok: true });
     } catch (error) {
@@ -828,6 +849,7 @@ io.on("connection", (socket) => {
       }
 
       room.peers.delete(socket.id);
+      socket.to(roomId).emit("peerLeft", { peerId: socket.id });
       if (room.ownerPeerId === socket.id) {
         room.ownerPeerId = null;
         const replacementOwner = Array.from(room.peers.entries()).find(([, candidate]) => candidate?.role === "owner");
