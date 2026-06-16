@@ -1398,6 +1398,7 @@ const Dashboard = () => {
               ].filter(Boolean).join(' ')}
               style={gridCols ? { '--grid-cols': gridCols } : undefined}
             >
+            {/* Col 1: focused remote spotlight */}
             {focusedRemote ? (
               <VideoTile
                 stream={focusedRemote.videoStream}
@@ -1411,41 +1412,88 @@ const Dashboard = () => {
               />
             ) : null}
 
-            <VideoTile
-              stream={localStream}
-              title={`${activeRoom.displayName} (Вы)`}
-              muted
-              avatarUrl={currentUserAvatarUrl || null}
-              forcePlaceholder={!videoEnabled && !sharingScreen}
-              handRaised={handRaised}
-              mirror={!sharingScreen}
-              tileId="local"
-              isFullscreen={fullscreenTileId === 'local'}
-              onOpenFullscreen={openTileInFullscreen}
-              variant={focusedPeerId === 'local' ? 'spotlight' : (sharingScreen ? 'spotlight' : 'local')}
-              isFocused={focusedPeerId === 'local'}
-              onFocus={() => setFocusedPeerId('local')}
-            />
-
-            {otherRemoteParticipants.map((participant) => (
+            {/* Col 1: local tile (spotlight when self-focused/sharing, normal otherwise) */}
+            {!focusedRemote && (
               <VideoTile
-                key={participant.peerId}
-                stream={participant.videoStream}
-                title={participant.displayName || 'Участник'}
-                avatarUrl={participant.avatarUrl || null}
-                forcePlaceholder={participant.cameraEnabled === false}
-                handRaised={participant.handRaised === true}
-                tileId={participant.peerId}
-                isFullscreen={fullscreenTileId === participant.peerId}
+                stream={localStream}
+                title={`${activeRoom.displayName} (Вы)`}
+                muted
+                avatarUrl={currentUserAvatarUrl || null}
+                forcePlaceholder={!videoEnabled && !sharingScreen}
+                handRaised={handRaised}
+                mirror={!sharingScreen}
+                tileId="local"
+                isFullscreen={fullscreenTileId === 'local'}
                 onOpenFullscreen={openTileInFullscreen}
-                variant={focusedPeerId === participant.peerId ? 'spotlight' : 'remote'}
-                isFocused={focusedPeerId === participant.peerId}
-                onFocus={() => setFocusedPeerId(participant.peerId)}
+                variant={focusedPeerId === 'local' ? 'spotlight' : (sharingScreen ? 'spotlight' : 'local')}
+                isFocused={focusedPeerId === 'local'}
+                onFocus={() => setFocusedPeerId('local')}
               />
+            )}
+
+            {/* Col 2: focus sidebar (flex column) or flat remote tiles */}
+            {(focusedPeerId || sharingScreen) ? (
+              (focusedRemote || remoteParticipants.length > 0) && (
+                <div className="focus-sidebar">
+                  {/* When focusing on a remote: local tile goes in sidebar */}
+                  {focusedRemote && (
+                    <VideoTile
+                      stream={localStream}
+                      title={`${activeRoom.displayName} (Вы)`}
+                      muted
+                      avatarUrl={currentUserAvatarUrl || null}
+                      forcePlaceholder={!videoEnabled}
+                      handRaised={handRaised}
+                      mirror
+                      tileId="local"
+                      isFullscreen={fullscreenTileId === 'local'}
+                      onOpenFullscreen={openTileInFullscreen}
+                      variant="local"
+                      onFocus={() => setFocusedPeerId('local')}
+                    />
+                  )}
+                  {/* Remote tiles: all remotes when self-focused/sharing, others when remote-focused */}
+                  {(focusedPeerId === 'local' || sharingScreen ? remoteParticipants : otherRemoteParticipants).map((participant) => (
+                    <VideoTile
+                      key={participant.peerId}
+                      stream={participant.videoStream}
+                      title={participant.displayName || 'Участник'}
+                      avatarUrl={participant.avatarUrl || null}
+                      forcePlaceholder={participant.cameraEnabled === false}
+                      handRaised={participant.handRaised === true}
+                      tileId={participant.peerId}
+                      isFullscreen={fullscreenTileId === participant.peerId}
+                      onOpenFullscreen={openTileInFullscreen}
+                      variant="remote"
+                      onFocus={() => setFocusedPeerId(participant.peerId)}
+                    />
+                  ))}
+                </div>
+              )
+            ) : (
+              /* Normal grid: flat remote tiles */
+              otherRemoteParticipants.map((participant) => (
+                <VideoTile
+                  key={participant.peerId}
+                  stream={participant.videoStream}
+                  title={participant.displayName || 'Участник'}
+                  avatarUrl={participant.avatarUrl || null}
+                  forcePlaceholder={participant.cameraEnabled === false}
+                  handRaised={participant.handRaised === true}
+                  tileId={participant.peerId}
+                  isFullscreen={fullscreenTileId === participant.peerId}
+                  onOpenFullscreen={openTileInFullscreen}
+                  variant={focusedPeerId === participant.peerId ? 'spotlight' : 'remote'}
+                  isFocused={focusedPeerId === participant.peerId}
+                  onFocus={() => setFocusedPeerId(participant.peerId)}
+                />
+              ))
+            )}
+
+            {/* Audio sinks (outside visual grid) */}
+            {remoteParticipants.map((participant) => (
+              <AudioSink key={`audio-${participant.peerId}`} stream={participant.audioStream} />
             ))}
-          {remoteParticipants.map((participant) => (
-            <AudioSink key={`audio-${participant.peerId}`} stream={participant.audioStream} />
-          ))}
             </div>
 
             <div className="call-dock">
