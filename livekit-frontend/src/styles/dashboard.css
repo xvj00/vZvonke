@@ -1071,11 +1071,6 @@
     grid-column: 1;
   }
 
-  .call-dock__inner {
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-
   .call-dock__divider {
     display: none;
   }
@@ -2368,7 +2363,7 @@
 
   .call-dock__inner {
     width: 100%;
-    justify-content: center;
+    justify-content: flex-start;
     flex-wrap: nowrap;
     overflow-x: auto;
     overflow-y: visible;
