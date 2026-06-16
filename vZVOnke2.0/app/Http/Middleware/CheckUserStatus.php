@@ -13,7 +13,6 @@ class CheckUserStatus
         $user = $request->user();
 
         if ($user && $user->is_blocked) {
-            $user->currentAccessToken()?->delete();
             return response()->json(['message' => 'Ваш аккаунт заблокирован администратором.'], 403);
         }
 
