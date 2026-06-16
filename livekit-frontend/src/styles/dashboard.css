@@ -655,6 +655,17 @@
   width: 100%;
 }
 
+/* When alone and focused — don't show empty 2nd column */
+.room-grid--count-1.is-focused {
+  grid-template-columns: 1fr;
+}
+.room-grid--count-1.is-focused .video-tile--spotlight {
+  grid-column: 1;
+  grid-row: auto;
+  max-width: min(900px, 90vw);
+  justify-self: center;
+}
+
 .video-tile {
   position: relative;
   min-height: 0;

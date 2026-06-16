@@ -50,6 +50,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       APP_ENV: ${APP_ENV:-production}
       APP_DEBUG: ${APP_DEBUG:-false}
@@ -66,6 +68,7 @@ services:
       QUEUE_CONNECTION: sync
       SANCTUM_STATEFUL_DOMAINS: ${SANCTUM_STATEFUL_DOMAINS:-localhost}
       MEDIASOUP_INTERNAL_SECRET: ${MEDIASOUP_INTERNAL_SECRET:-}
+      MEDIASOUP_INTERNAL_URL: "http://host.docker.internal:${MEDIASOUP_PORT:-4001}"
     volumes:
       - laravel_storage:/var/www/storage
     deploy:

@@ -114,7 +114,7 @@ class AdminController extends Controller
 
     private function kickUserFromMediasoup(int $userId): void
     {
-        $url = config('services.mediasoup.internal_url', env('MEDIASOUP_SIGNALING_URL', 'http://localhost:4001'));
+        $url = env('MEDIASOUP_INTERNAL_URL', 'http://localhost:4001');
         $secret = config('services.mediasoup.secret', env('MEDIASOUP_INTERNAL_SECRET', ''));
 
         try {
@@ -128,7 +128,7 @@ class AdminController extends Controller
 
     private function closeRoomInMediasoup(string $roomUuid): void
     {
-        $url = config('services.mediasoup.internal_url', env('MEDIASOUP_SIGNALING_URL', 'http://localhost:4001'));
+        $url = env('MEDIASOUP_INTERNAL_URL', 'http://localhost:4001');
         $secret = config('services.mediasoup.secret', env('MEDIASOUP_INTERNAL_SECRET', ''));
 
         try {
