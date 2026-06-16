@@ -349,8 +349,21 @@ async function fetchRoomMessages({ roomId, accessToken }) {
 }
 
 async function saveRoomMessage({ roomId, accessToken, displayName, text }) {
+  // Гостевой режим: возвращаем эфемерное сообщение без сохранения в БД
   if (!accessToken) {
-    throw new Error("Для отправки сообщений требуется токен авторизации");
+    return {
+      id: `guest-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      room_id: roomId,
+      user_id: null,
+      display_name: displayName || "Гость",
+      message: text,
+      attachment_url: null,
+      attachment_name: null,
+      attachment_mime: null,
+      attachment_size: null,
+      created_at: new Date().toISOString(),
+      is_guest: true,
+    };
   }
   const response = await fetch(`${laravelApiUrl}/rooms/${roomId}/messages`, {
     method: "POST",

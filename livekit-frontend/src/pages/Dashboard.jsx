@@ -966,7 +966,7 @@ const Dashboard = () => {
     const roomId = activeRoomIdRef.current;
     if (!file || !roomId) return;
     if (!authToken) {
-      setChatError('Для отправки файлов нужно войти в аккаунт.');
+      setChatError('__guest_file__');
       return;
     }
 
@@ -1238,6 +1238,24 @@ const Dashboard = () => {
       ? remoteParticipants.filter((participant) => participant.peerId !== focusedRemote.peerId)
       : remoteParticipants;
 
+    // Smart grid: compute column count like Zoom/Meet
+    const totalTiles = 1 + remoteParticipants.length;
+    const gridCols = (() => {
+      if (focusedPeerId || sharingScreen) return null; // spotlight mode — CSS handles this
+      if (isMobileView) {
+        if (totalTiles <= 1) return 1;
+        if (totalTiles === 2) return 1; // stacked portrait
+        return 2;
+      }
+      if (totalTiles <= 1) return 1;
+      if (totalTiles === 2) return 2;
+      if (totalTiles === 3) return 3;
+      if (totalTiles <= 4) return 2;
+      if (totalTiles <= 6) return 3;
+      if (totalTiles <= 9) return 3;
+      return 4;
+    })();
+
     return (
       <div className="room-container">
         <div className="room-topbar room-topbar--overlay">
@@ -1331,7 +1349,9 @@ const Dashboard = () => {
                 'room-grid--dock',
                 sharingScreen ? 'is-sharing' : '',
                 focusedPeerId ? 'is-focused' : '',
+                `room-grid--count-${Math.min(totalTiles, 16)}`,
               ].filter(Boolean).join(' ')}
+              style={gridCols ? { '--grid-cols': gridCols } : undefined}
             >
             {focusedRemote ? (
               <VideoTile
@@ -1715,7 +1735,21 @@ const Dashboard = () => {
                         })
                       )}
                     </div>
-                    {chatError && <div className="form-error room-chat__error">{chatError}</div>}
+                    {chatError && (
+                      chatError === '__guest_file__' ? (
+                        <div className="room-chat__guest-notice">
+                          <span>Загрузка файлов доступна только авторизованным.</span>
+                          <Link
+                            className="room-chat__guest-login"
+                            to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`}
+                          >
+                            Войти
+                          </Link>
+                        </div>
+                      ) : (
+                        <div className="form-error room-chat__error">{chatError}</div>
+                      )
+                    )}
                     <div className="room-chat__composer room-chat__composer--sidebar">
                       <input
                         ref={chatInputRef}
@@ -1732,8 +1766,11 @@ const Dashboard = () => {
                       <button
                         type="button"
                         className="secondary-btn room-chat__attach"
-                        onClick={() => fileInputRef.current?.click()}
-                        title="Прикрепить файл"
+                        onClick={() => {
+                          if (!authToken) { setChatError('__guest_file__'); return; }
+                          fileInputRef.current?.click();
+                        }}
+                        title={authToken ? 'Прикрепить файл' : 'Только для авторизованных'}
                       >
                         <AttachmentIcon />
                       </button>
