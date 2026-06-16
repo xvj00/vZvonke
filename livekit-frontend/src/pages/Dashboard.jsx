@@ -48,6 +48,8 @@ const localizeApiMessage = (message) => {
     ['transport error', 'Сбой соединения с сервером.'],
     ['timeout', 'Превышено время ожидания ответа сервера.'],
     ['Network Error', 'Ошибка сети. Проверьте подключение к интернету.'],
+    ['Permission denied', 'Нет доступа к устройствам.'],
+    ['NotAllowedError', 'Доступ к камере/микрофону запрещён.'],
   ]);
 
   return dictionary.get(text) || text;
@@ -655,23 +657,30 @@ const Dashboard = () => {
 
       let stream;
       let hasLocalMedia = false;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: selectedAudioInput ? { deviceId: { exact: selectedAudioInput } } : true,
-          video: selectedVideoInput
-            ? { ...(defaultVideoConstraints === true ? {} : defaultVideoConstraints), deviceId: { exact: selectedVideoInput } }
-            : defaultVideoConstraints,
-        });
-        hasLocalMedia = true;
-      } catch {
+      const gum = navigator.mediaDevices?.getUserMedia?.bind(navigator.mediaDevices);
+      if (gum) {
         try {
-          stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          stream = await gum({
+            audio: selectedAudioInput ? { deviceId: { exact: selectedAudioInput } } : true,
+            video: selectedVideoInput
+              ? { ...(defaultVideoConstraints === true ? {} : defaultVideoConstraints), deviceId: { exact: selectedVideoInput } }
+              : defaultVideoConstraints,
+          });
           hasLocalMedia = true;
         } catch {
-          // Нет устройств — входим как слушатель
-          stream = new MediaStream();
-          hasLocalMedia = false;
+          try {
+            stream = await gum({ audio: true, video: false });
+            hasLocalMedia = true;
+          } catch {
+            stream = new MediaStream();
+            hasLocalMedia = false;
+            toast('Нет доступа к камере и микрофону — вы подключены как слушатель.', 'warning', 6000);
+          }
         }
+      } else {
+        stream = new MediaStream();
+        hasLocalMedia = false;
+        toast('Медиаустройства недоступны — вы подключены как слушатель.', 'warning', 6000);
       }
       // Join muted and without camera by default.
       stream.getAudioTracks().forEach((track) => {
@@ -1962,7 +1971,7 @@ const Dashboard = () => {
                 {loadingCreate ? 'Подключаем…' : 'Создать встречу'}
               </button>
             </div>
-          ) : !(isGuestRoute && roomParam) ? (
+          ) : !isGuestRoute ? (
             <div className="auth-required-panel">
               <div className="meeting-panel__title">Создание встречи доступно только с аккаунтом</div>
               <p className="auth-required-panel__text">
