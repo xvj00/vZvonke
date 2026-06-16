@@ -2,6 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } fro
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api, authApi } from '../lib/api';
+import { toast } from '../components/Toasts';
 import endCallIcon from '../assets/end-call.png';
 import '../styles/dashboard.css';
 
@@ -495,7 +496,7 @@ const Dashboard = () => {
   const connectToRoom = async (roomId, displayName) => {
     setError('');
     if (requireAuthForCalls && !authToken) {
-      setError('Войдите в аккаунт, чтобы участвовать в звонке.');
+      toast('Войдите в аккаунт, чтобы участвовать в звонке.', 'error');
       return;
     }
     setConnectingRoom(true);
@@ -513,7 +514,7 @@ const Dashboard = () => {
         try {
           await consumeProducer({ producerId, peerId, displayName: producerDisplayName, avatarUrl, cameraEnabled, handRaised }, roomId);
         } catch (err) {
-          setError(localizeApiMessage(err?.message || 'Ошибка получения нового потока'));
+          toast(localizeApiMessage(err?.message || 'Ошибка получения нового потока'), 'error');
         }
       });
 
@@ -575,14 +576,14 @@ const Dashboard = () => {
       });
 
       socket.on('roomEnded', () => {
-        setError('Организатор завершил звонок.');
+        toast('Организатор завершил звонок.', 'info', 6000);
         closeRoomConnections();
         setActiveRoom(null);
         setSharebarOpen(false);
       });
 
       socket.on('kicked', ({ reason }) => {
-        setError(reason || 'Вы были удалены из звонка.');
+        toast(reason || 'Вас удалили из звонка.', 'error', 7000);
         closeRoomConnections();
         setActiveRoom(null);
         setSharebarOpen(false);
@@ -593,6 +594,7 @@ const Dashboard = () => {
           localStreamRef.current.getAudioTracks().forEach((track) => { track.enabled = false; });
         }
         setAudioEnabled(false);
+        toast('Организатор выключил ваш микрофон.', 'warning');
       });
 
       socket.on('videoDisableRequested', () => {
@@ -605,6 +607,7 @@ const Dashboard = () => {
         if (socket2 && roomId2) {
           requestSocket(socket2, 'updateMediaState', { roomId: roomId2, cameraEnabled: false }).catch(() => {});
         }
+        toast('Организатор выключил вашу камеру.', 'warning');
       });
 
       await new Promise((resolve, reject) => {
@@ -708,7 +711,9 @@ const Dashboard = () => {
       setActiveRoom({ roomId, displayName });
     } catch (err) {
       closeRoomConnections();
-      setError(localizeApiMessage(err?.message || 'Не удалось подключиться к комнате.'));
+      const msg = localizeApiMessage(err?.message || 'Не удалось подключиться к комнате.');
+      setError(msg);
+      toast(msg, 'error');
     } finally {
       setConnectingRoom(false);
     }
@@ -743,7 +748,7 @@ const Dashboard = () => {
       await replaceLocalTrack('audio', nextAudioTrack);
       nextAudioTrack.enabled = audioEnabled;
     } catch {
-      setError('Не удалось переключить микрофон.');
+      toast('Не удалось переключить микрофон.', 'error');
     }
   };
 
@@ -763,7 +768,7 @@ const Dashboard = () => {
       await replaceLocalTrack('video', nextVideoTrack);
       nextVideoTrack.enabled = videoEnabled;
     } catch {
-      setError('Не удалось переключить камеру.');
+      toast('Не удалось переключить камеру.', 'error');
     }
   };
 
@@ -795,7 +800,7 @@ const Dashboard = () => {
     }
 
     if (videoInputs.length < 2) {
-      setError('Не удалось перевернуть камеру на этом устройстве.');
+      toast('Не удалось перевернуть камеру на этом устройстве.', 'warning');
       return;
     }
 
@@ -830,7 +835,7 @@ const Dashboard = () => {
       try {
         await restoreCameraTrack(wasEnabled);
       } catch {
-        setError('Не удалось вернуть камеру после демонстрации экрана.');
+        toast('Не удалось вернуть камеру после демонстрации экрана.', 'error');
       }
       setSharingScreen(false);
       setVideoEnabled(wasEnabled);
@@ -862,7 +867,7 @@ const Dashboard = () => {
         try {
           await restoreCameraTrack(wasEnabled);
         } catch {
-          setError('Не удалось вернуть камеру после завершения демонстрации.');
+          toast('Не удалось вернуть камеру после завершения демонстрации.', 'error');
         }
         setSharingScreen(false);
         setVideoEnabled(wasEnabled);
@@ -873,7 +878,7 @@ const Dashboard = () => {
         }
       };
     } catch {
-      setError('Не удалось начать демонстрацию экрана.');
+      toast('Не удалось начать демонстрацию экрана.', 'error');
     }
   };
 
@@ -909,7 +914,7 @@ const Dashboard = () => {
     try {
       await target.requestFullscreen();
     } catch {
-      setError('Не удалось открыть полноэкранный режим.');
+      toast('Не удалось открыть полноэкранный режим.', 'warning');
     }
   };
 
@@ -927,7 +932,7 @@ const Dashboard = () => {
         setFullscreenTileId(tileId);
       }
     } catch {
-      setError('Не удалось открыть полноэкранный режим.');
+      toast('Не удалось открыть полноэкранный режим.', 'warning');
     }
   };
 
@@ -1005,7 +1010,7 @@ const Dashboard = () => {
       setRoomCodeInput(roomId);
       await connectToRoom(roomId, displayName);
     } catch (err) {
-      setError(localizeApiMessage(err?.response?.data?.message || err?.message || 'Ошибка создания комнаты.'));
+      toast(localizeApiMessage(err?.response?.data?.message || err?.message || 'Ошибка создания комнаты.'), 'error');
     } finally {
       setLoadingCreate(false);
     }
@@ -1017,7 +1022,7 @@ const Dashboard = () => {
     try {
       const roomUuid = extractRoomCode(roomCodeInput);
       if (!roomUuid) {
-        setError('Укажите ссылку или код комнаты.');
+        toast('Укажите ссылку или код комнаты.', 'warning');
         return;
       }
 
@@ -1027,7 +1032,7 @@ const Dashboard = () => {
       setRoomCodeInput(roomUuid);
       await connectToRoom(roomUuid, displayName);
     } catch {
-      setError('Не удалось подключиться. Проверьте код комнаты.');
+      toast('Не удалось подключиться. Проверьте код комнаты.', 'error');
     } finally {
       setLoadingJoin(false);
     }
@@ -1070,7 +1075,7 @@ const Dashboard = () => {
     const roomId = activeRoomIdRef.current;
     if (!socket || !roomId) return;
     requestSocket(socket, 'kickParticipant', { roomId, targetPeerId }).catch((err) => {
-      setError(localizeApiMessage(err?.message || 'Не удалось удалить участника.'));
+      toast(localizeApiMessage(err?.message || 'Не удалось удалить участника.'), 'error');
     });
   };
 
@@ -1079,7 +1084,7 @@ const Dashboard = () => {
     const roomId = activeRoomIdRef.current;
     if (!socket || !roomId) return;
     requestSocket(socket, 'muteParticipant', { roomId, targetPeerId }).catch((err) => {
-      setError(localizeApiMessage(err?.message || 'Не удалось выключить микрофон.'));
+      toast(localizeApiMessage(err?.message || 'Не удалось выключить микрофон.'), 'error');
     });
   };
 
@@ -1088,7 +1093,7 @@ const Dashboard = () => {
     const roomId = activeRoomIdRef.current;
     if (!socket || !roomId) return;
     requestSocket(socket, 'disableVideoParticipant', { roomId, targetPeerId }).catch((err) => {
-      setError(localizeApiMessage(err?.message || 'Не удалось выключить камеру.'));
+      toast(localizeApiMessage(err?.message || 'Не удалось выключить камеру.'), 'error');
     });
   };
 
@@ -1101,7 +1106,7 @@ const Dashboard = () => {
       await requestSocket(socket, 'updateHandRaise', { roomId, handRaised: next });
       setHandRaised(next);
     } catch {
-      setError('Не удалось обновить статус поднятой руки.');
+      toast('Не удалось обновить статус поднятой руки.', 'error');
     }
   };
 
@@ -1585,7 +1590,7 @@ const Dashboard = () => {
                             const socket = socketRef.current;
                             if (!socket || !roomId) return;
                             requestSocket(socket, 'endRoom', { roomId }).catch((err) => {
-                              setError(localizeApiMessage(err?.message || 'Не удалось завершить звонок.'));
+                              toast(localizeApiMessage(err?.message || 'Не удалось завершить звонок.'), 'error');
                             });
                           }}
                         >
