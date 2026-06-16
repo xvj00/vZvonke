@@ -150,6 +150,15 @@ class RoomController extends Controller
         return response()->json(['message' => 'Пустая комната успешно закрыта'], 200);
     }
 
+    public function exists(string $uuid)
+    {
+        $exists = Room::where('uuid', $uuid)->exists();
+        if (!$exists) {
+            return response()->json(['exists' => false], 404);
+        }
+        return response()->json(['exists' => true]);
+    }
+
     public function show(Request $request, string $uuid)
     {
         $room = $this->findRoomOrFail($uuid);

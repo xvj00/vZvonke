@@ -394,6 +394,10 @@ io.on("connection", (socket) => {
   socket.on("joinRoom", async ({ roomId, displayName, avatarUrl, accessToken }, cb) => {
     try {
       const participant = await validateRoomAccess({ roomId, accessToken });
+      if (!participant) {
+        const checkRes = await fetch(`${laravelApiUrl}/rooms/${roomId}/exists`);
+        if (!checkRes.ok) throw new Error("Комната не найдена.");
+      }
       const room = await getOrCreateRoom(roomId);
       if (room.peers.size >= MAX_PEERS_PER_ROOM) {
         throw new Error(`Комната заполнена (не более ${MAX_PEERS_PER_ROOM} участников)`);

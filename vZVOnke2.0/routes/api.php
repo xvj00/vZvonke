@@ -19,6 +19,8 @@ Route::post('/logout', [LoginController::class, 'logout'])
     ->middleware(['auth:sanctum', 'throttle:api-rooms'])
     ->name('logout');
 
+Route::get('/rooms/{uuid}/exists', [RoomController::class, 'exists'])->name('room-exists');
+
 Route::post('/internal/rooms/{uuid}/close-empty', [RoomController::class, 'closeEmptyByMediasoup'])
     ->middleware(['mediasoup.secret', 'throttle:api-rooms'])
     ->name('internal.rooms.close-empty');
