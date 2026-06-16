@@ -248,10 +248,3 @@ class RoomController extends Controller
     }
 
 }
-  }
-
-}
-);
-    }
-
-}
