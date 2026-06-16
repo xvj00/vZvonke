@@ -129,6 +129,7 @@ const Dashboard = () => {
     if (typeof window === 'undefined') return false;
     return window.matchMedia('(max-width: 720px)').matches;
   });
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const isLowEndDevice = useMemo(() => {
     if (typeof navigator === 'undefined') return false;
     const deviceMemory = Number(navigator.deviceMemory || 0);
@@ -649,12 +650,26 @@ const Dashboard = () => {
           .catch(errback);
       });
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: selectedAudioInput ? { deviceId: { exact: selectedAudioInput } } : true,
-        video: selectedVideoInput
-          ? { ...(defaultVideoConstraints === true ? {} : defaultVideoConstraints), deviceId: { exact: selectedVideoInput } }
-          : defaultVideoConstraints,
-      });
+      let stream;
+      let hasLocalMedia = false;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: selectedAudioInput ? { deviceId: { exact: selectedAudioInput } } : true,
+          video: selectedVideoInput
+            ? { ...(defaultVideoConstraints === true ? {} : defaultVideoConstraints), deviceId: { exact: selectedVideoInput } }
+            : defaultVideoConstraints,
+        });
+        hasLocalMedia = true;
+      } catch {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          hasLocalMedia = true;
+        } catch {
+          // Нет устройств — входим как слушатель
+          stream = new MediaStream();
+          hasLocalMedia = false;
+        }
+      }
       // Join muted and without camera by default.
       stream.getAudioTracks().forEach((track) => {
         track.enabled = false;
@@ -667,11 +682,13 @@ const Dashboard = () => {
       setAudioEnabled(false);
       setVideoEnabled(false);
 
-      for (const track of stream.getTracks()) {
-        const producer = await sendTransport.produce({ track });
-        localProducersRef.current.push(producer);
-        if (track.kind === 'audio') micProducerRef.current = producer;
-        if (track.kind === 'video') camProducerRef.current = producer;
+      if (hasLocalMedia) {
+        for (const track of stream.getTracks()) {
+          const producer = await sendTransport.produce({ track });
+          localProducersRef.current.push(producer);
+          if (track.kind === 'audio') micProducerRef.current = producer;
+          if (track.kind === 'video') camProducerRef.current = producer;
+        }
       }
 
       for (const producerMeta of joinData.producers || []) {
@@ -787,7 +804,7 @@ const Dashboard = () => {
     await handleVideoInputChange(videoInputs[nextIndex].deviceId);
   };
 
-  const restoreCameraTrack = async () => {
+  const restoreCameraTrack = async (desiredEnabled = videoEnabled) => {
     if (!camProducerRef.current) return;
 
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -798,7 +815,7 @@ const Dashboard = () => {
     const [cameraTrack] = stream.getVideoTracks();
     if (!cameraTrack) return;
     await replaceLocalTrack('video', cameraTrack);
-    cameraTrack.enabled = videoEnabled;
+    cameraTrack.enabled = desiredEnabled;
   };
 
   const toggleScreenShare = async () => {
@@ -809,12 +826,19 @@ const Dashboard = () => {
         screenTrackRef.current.stop();
         screenTrackRef.current = null;
       }
+      const wasEnabled = lastVideoEnabledBeforeShareRef.current;
       try {
-        await restoreCameraTrack();
+        await restoreCameraTrack(wasEnabled);
       } catch {
         setError('Не удалось вернуть камеру после демонстрации экрана.');
       }
       setSharingScreen(false);
+      setVideoEnabled(wasEnabled);
+      const socket2 = socketRef.current;
+      const roomId2 = activeRoomIdRef.current;
+      if (socket2 && roomId2) {
+        requestSocket(socket2, 'updateMediaState', { roomId: roomId2, cameraEnabled: wasEnabled }).catch(() => {});
+      }
       return;
     }
 
@@ -834,12 +858,19 @@ const Dashboard = () => {
 
       screenTrack.onended = async () => {
         screenTrackRef.current = null;
+        const wasEnabled = lastVideoEnabledBeforeShareRef.current;
         try {
-          await restoreCameraTrack();
+          await restoreCameraTrack(wasEnabled);
         } catch {
           setError('Не удалось вернуть камеру после завершения демонстрации.');
         }
         setSharingScreen(false);
+        setVideoEnabled(wasEnabled);
+        const socketEnd = socketRef.current;
+        const roomIdEnd = activeRoomIdRef.current;
+        if (socketEnd && roomIdEnd) {
+          requestSocket(socketEnd, 'updateMediaState', { roomId: roomIdEnd, cameraEnabled: wasEnabled }).catch(() => {});
+        }
       };
     } catch {
       setError('Не удалось начать демонстрацию экрана.');
@@ -1770,55 +1801,71 @@ const Dashboard = () => {
     );
   }
 
+  const navLinks = user ? (
+    <>
+      <div className="profile-chip">
+        {currentUserAvatarUrl ? (
+          <img src={currentUserAvatarUrl} alt="Аватар" className="profile-chip__avatar" />
+        ) : (
+          <span className="profile-chip__fallback">
+            {(user?.name || user?.login || 'U').slice(0, 1).toUpperCase()}
+          </span>
+        )}
+      </div>
+      {user?.role === 'admin' && (
+        <Link className="secondary-btn landing__admin-link" to="/admin" onClick={() => setMobileMenuOpen(false)}>
+          Админка
+        </Link>
+      )}
+      {isGuestRoute && (
+        <Link className="secondary-btn" to="/" onClick={() => setMobileMenuOpen(false)}>
+          На главную
+        </Link>
+      )}
+      <button className="secondary-btn" onClick={() => { setMobileMenuOpen(false); openProfile(); }}>Профиль</button>
+      <button className="secondary-btn" onClick={() => { setMobileMenuOpen(false); logout(); }}>Выйти</button>
+    </>
+  ) : (
+    <>
+      <Link className="secondary-btn" to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} onClick={() => setMobileMenuOpen(false)}>
+        Войти
+      </Link>
+      <Link className="secondary-btn" to="/register" onClick={() => setMobileMenuOpen(false)}>
+        Регистрация
+      </Link>
+      {roomParam && (
+        <Link className="secondary-btn" to="/guest" onClick={() => setMobileMenuOpen(false)}>
+          На главную
+        </Link>
+      )}
+    </>
+  );
+
   return (
     <div className="landing">
       <header className="landing__header">
-        <div className="landing__brand">
+        <Link to="/" className="landing__brand">
           <span className="landing__brand-mark">V</span>
           <span>вZвонке</span>
-        </div>
+        </Link>
         <div className="landing__header-actions">
-          {user ? (
-            <>
-              <div className="profile-chip">
-                {currentUserAvatarUrl ? (
-                  <img src={currentUserAvatarUrl} alt="Аватар" className="profile-chip__avatar" />
-                ) : (
-                  <span className="profile-chip__fallback">
-                    {(user?.name || user?.login || 'U').slice(0, 1).toUpperCase()}
-                  </span>
-                )}
-              </div>
-              {user?.role === 'admin' && (
-                <Link className="secondary-btn landing__admin-link" to="/admin">
-                  Админка
-                </Link>
-              )}
-              {isGuestRoute && (
-                <Link className="secondary-btn" to="/">
-                  На главную
-                </Link>
-              )}
-              <button className="secondary-btn" onClick={openProfile}>Профиль</button>
-              <button className="secondary-btn" onClick={logout}>Выйти</button>
-            </>
-          ) : (
-            <>
-              <Link className="secondary-btn" to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`}>
-                Войти
-              </Link>
-              <Link className="secondary-btn" to="/register">
-                Регистрация
-              </Link>
-              {roomParam && (
-                <Link className="secondary-btn" to="/guest">
-                  На главную
-                </Link>
-              )}
-            </>
-          )}
+          {navLinks}
         </div>
+        <button
+          type="button"
+          className="burger-btn"
+          onClick={() => setMobileMenuOpen((v) => !v)}
+          aria-expanded={mobileMenuOpen}
+          aria-label={mobileMenuOpen ? 'Закрыть меню' : 'Открыть меню'}
+        >
+          <BurgerIcon open={mobileMenuOpen} />
+        </button>
       </header>
+      {mobileMenuOpen && (
+        <div className="mobile-menu">
+          {navLinks}
+        </div>
+      )}
 
       <main className="landing__content">
         <section className="landing__left">
@@ -1873,7 +1920,7 @@ const Dashboard = () => {
                 {loadingCreate ? 'Подключаем…' : 'Создать встречу'}
               </button>
             </div>
-          ) : (
+          ) : !(isGuestRoute && roomParam) ? (
             <div className="auth-required-panel">
               <div className="meeting-panel__title">Создание встречи доступно только с аккаунтом</div>
               <p className="auth-required-panel__text">
@@ -1888,7 +1935,7 @@ const Dashboard = () => {
                 </Link>
               </div>
             </div>
-          )}
+          ) : null}
 
           {isGuestRoute && roomParam && !user ? (
             <div className="join-panel join-panel--guest-prominent">
@@ -1973,6 +2020,16 @@ const Dashboard = () => {
           </div>
         </section>
       </main>
+
+      {connectingRoom && (
+        <div className="connecting-overlay" role="status" aria-live="polite">
+          <div className="connecting-overlay__box">
+            <div className="connecting-overlay__spinner" aria-hidden />
+            <div className="connecting-overlay__title">Подключение к звонку…</div>
+            <div className="connecting-overlay__sub">Устанавливаем защищённое соединение</div>
+          </div>
+        </div>
+      )}
 
       {profileOpen && (
         <div className="profile-modal-backdrop" onClick={() => setProfileOpen(false)}>
@@ -2294,6 +2351,23 @@ const KickIcon = () => (
 const AttachmentIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <path d="M21.44 11.05l-8.49 8.49a5 5 0 0 1-7.07-7.07l8.49-8.49a3.5 3.5 0 0 1 4.95 4.95l-8.5 8.49a2 2 0 0 1-2.83-2.83l8.01-8.01" />
+  </svg>
+);
+
+const BurgerIcon = ({ open }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    {open ? (
+      <>
+        <line x1="18" y1="6" x2="6" y2="18" />
+        <line x1="6" y1="6" x2="18" y2="18" />
+      </>
+    ) : (
+      <>
+        <line x1="3" y1="7" x2="21" y2="7" />
+        <line x1="3" y1="12" x2="21" y2="12" />
+        <line x1="3" y1="17" x2="21" y2="17" />
+      </>
+    )}
   </svg>
 );
 
