@@ -341,7 +341,17 @@
 .admin-badge--blocked {
   background: #fee2e2;
   color: #b91c1c;
-  margin-left: 6px;
+  margin-left: 4px;
+}
+
+/* badges must stay inline even inside .admin-table where span { display: block } */
+.admin-table .admin-badge {
+  display: inline-flex;
+  align-items: center;
+}
+
+.admin-table td:has(.admin-badge) {
+  white-space: nowrap;
 }
 
 .admin-row--blocked td {

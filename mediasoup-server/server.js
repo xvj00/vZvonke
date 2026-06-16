@@ -414,6 +414,7 @@ io.on("connection", (socket) => {
         handRaised: false,
         accessToken: accessToken || null,
         participantId: participant?.id || null,
+        userId: participant?.user_id || null,
         role: participant?.role || null,
       });
       if (isOwner) {
