@@ -2468,6 +2468,19 @@
     padding-left: 8px;
     padding-right: 8px;
     padding-bottom: 10px;
+    align-content: center; /* don't stretch tiles to fill full height */
+  }
+
+  /* Single tile: keep a reasonable aspect ratio instead of filling full height */
+  .room-grid--count-1 .video-tile {
+    aspect-ratio: 4/3;
+    max-height: calc(100dvh - 210px);
+    max-width: 100%;
+  }
+
+  /* Hide room UUID in topbar on small phones — saves ~20px */
+  .room-topbar__code {
+    display: none;
   }
 
   .dock-btn,
