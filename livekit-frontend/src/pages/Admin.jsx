@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { adminApi } from '../lib/api';
+import { useAuth } from '../contexts/AuthContext';
 import '../styles/admin.css';
 
 const tabs = [
@@ -26,6 +27,7 @@ const formatDate = (value) => {
 const getPageItems = (page) => page?.data || [];
 
 const Admin = () => {
+  const { user: currentUser } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
   const [overview, setOverview] = useState(null);
   const [usersPage, setUsersPage] = useState(null);
@@ -38,6 +40,7 @@ const Admin = () => {
   const [activeRoomsPageNumber, setActiveRoomsPageNumber] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [actionLoading, setActionLoading] = useState('');
 
   const loadOverview = useCallback(async () => {
     const data = await adminApi.overview();
@@ -110,6 +113,38 @@ const Admin = () => {
     if (activeTab === 'active') update(setActiveRoomsPageNumber, activeRoomsPageNumber, activeRoomsPage?.last_page);
   };
 
+  const handleBlockUser = async (userId, isBlocked) => {
+    setActionLoading(`user-${userId}`);
+    setError('');
+    try {
+      if (isBlocked) {
+        await adminApi.unblockUser(userId);
+      } else {
+        await adminApi.blockUser(userId);
+      }
+      await loadUsers();
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Не удалось выполнить действие.');
+    } finally {
+      setActionLoading('');
+    }
+  };
+
+  const handleCloseRoom = async (roomId) => {
+    if (!window.confirm('Закрыть комнату? Все участники будут отключены.')) return;
+    setActionLoading(`room-${roomId}`);
+    setError('');
+    try {
+      await adminApi.closeRoom(roomId);
+      if (activeTab === 'rooms') await loadRooms();
+      if (activeTab === 'active') await loadActiveRooms();
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Не удалось закрыть комнату.');
+    } finally {
+      setActionLoading('');
+    }
+  };
+
   return (
     <div className="admin-page">
       <header className="admin-topbar">
@@ -170,7 +205,13 @@ const Admin = () => {
               placeholder="Поиск по логину, имени или email"
             />
           </div>
-          <UsersTable users={getPageItems(usersPage)} loading={loading} />
+          <UsersTable
+            users={getPageItems(usersPage)}
+            loading={loading}
+            actionLoading={actionLoading}
+            currentUserId={currentUser?.id}
+            onBlock={handleBlockUser}
+          />
         </section>
       )}
 
@@ -189,13 +230,23 @@ const Admin = () => {
               <option value="closed">Закрытые</option>
             </select>
           </div>
-          <RoomsTable rooms={getPageItems(roomsPage)} loading={loading} />
+          <RoomsTable
+            rooms={getPageItems(roomsPage)}
+            loading={loading}
+            actionLoading={actionLoading}
+            onCloseRoom={handleCloseRoom}
+          />
         </section>
       )}
 
       {activeTab === 'active' && (
         <section className="admin-section">
-          <RoomsTable rooms={getPageItems(activeRoomsPage)} loading={loading} />
+          <RoomsTable
+            rooms={getPageItems(activeRoomsPage)}
+            loading={loading}
+            actionLoading={actionLoading}
+            onCloseRoom={handleCloseRoom}
+          />
         </section>
       )}
 
@@ -246,7 +297,7 @@ const LatestList = ({ title, items, type }) => (
   </section>
 );
 
-const UsersTable = ({ users, loading }) => (
+const UsersTable = ({ users, loading, actionLoading, currentUserId, onBlock }) => (
   <div className="admin-table-wrap">
     <table className="admin-table">
       <thead>
@@ -258,37 +309,56 @@ const UsersTable = ({ users, loading }) => (
           <th>Комнаты</th>
           <th>Участия</th>
           <th>Создан</th>
+          <th>Действия</th>
         </tr>
       </thead>
       <tbody>
         {loading ? (
-          <EmptyRow colSpan={7} text="Загружаем…" />
+          <EmptyRow colSpan={8} text="Загружаем…" />
         ) : users.length === 0 ? (
-          <EmptyRow colSpan={7} text="Пользователей не найдено" />
+          <EmptyRow colSpan={8} text="Пользователей не найдено" />
         ) : (
-          users.map((user) => (
-            <tr key={user.id}>
-              <td>{user.id}</td>
-              <td>
-                <strong>{user.name}</strong>
-                <span>{user.login}</span>
-              </td>
-              <td>{user.email}</td>
-              <td>
-                <span className={`admin-badge ${user.role === 'admin' ? 'is-admin' : ''}`}>{user.role}</span>
-              </td>
-              <td>{user.owned_rooms_count ?? 0}</td>
-              <td>{user.room_participations_count ?? 0}</td>
-              <td>{formatDate(user.created_at)}</td>
-            </tr>
-          ))
+          users.map((user) => {
+            const isSelf = user.id === currentUserId;
+            const isBlocked = Boolean(user.is_blocked);
+            const busy = actionLoading === `user-${user.id}`;
+            return (
+              <tr key={user.id} className={isBlocked ? 'admin-row--blocked' : ''}>
+                <td>{user.id}</td>
+                <td>
+                  <strong>{user.name}</strong>
+                  <span>{user.login}</span>
+                </td>
+                <td>{user.email}</td>
+                <td>
+                  <span className={`admin-badge ${user.role === 'admin' ? 'is-admin' : ''}`}>{user.role === 'admin' ? 'Админ' : 'Пользователь'}</span>
+                  {isBlocked && <span className="admin-badge admin-badge--blocked">Заблокирован</span>}
+                </td>
+                <td>{user.owned_rooms_count ?? 0}</td>
+                <td>{user.room_participations_count ?? 0}</td>
+                <td>{formatDate(user.created_at)}</td>
+                <td>
+                  {!isSelf && user.role !== 'admin' && (
+                    <button
+                      type="button"
+                      className={`admin-action-btn ${isBlocked ? 'admin-action-btn--unblock' : 'admin-action-btn--block'}`}
+                      disabled={busy}
+                      onClick={() => onBlock(user.id, isBlocked)}
+                    >
+                      {busy ? '…' : isBlocked ? 'Разблокировать' : 'Заблокировать'}
+                    </button>
+                  )}
+                </td>
+              </tr>
+            );
+          })
         )}
       </tbody>
     </table>
   </div>
 );
 
-const RoomsTable = ({ rooms, loading }) => (
+const RoomsTable = ({ rooms, loading, actionLoading, onCloseRoom }) => (
   <div className="admin-table-wrap">
     <table className="admin-table">
       <thead>
@@ -301,34 +371,50 @@ const RoomsTable = ({ rooms, loading }) => (
           <th>Активны</th>
           <th>Сообщения</th>
           <th>Создана</th>
+          <th>Действия</th>
         </tr>
       </thead>
       <tbody>
         {loading ? (
-          <EmptyRow colSpan={8} text="Загружаем…" />
+          <EmptyRow colSpan={9} text="Загружаем…" />
         ) : rooms.length === 0 ? (
-          <EmptyRow colSpan={8} text="Комнат не найдено" />
+          <EmptyRow colSpan={9} text="Комнат не найдено" />
         ) : (
-          rooms.map((room) => (
-            <tr key={room.id}>
-              <td>{room.id}</td>
-              <td>
-                <strong>{room.title}</strong>
-                <span>{room.uuid}</span>
-              </td>
-              <td>
-                <strong>{room.owner?.name || '—'}</strong>
-                <span>{room.owner?.email || ''}</span>
-              </td>
-              <td>
-                <span className={`admin-badge ${room.status === 'active' ? 'is-active' : ''}`}>{room.status === 'active' ? 'Активна' : 'Закрыта'}</span>
-              </td>
-              <td>{room.participants_count ?? 0}</td>
-              <td>{room.active_participants_count ?? 0}</td>
-              <td>{room.messages_count ?? 0}</td>
-              <td>{formatDate(room.created_at)}</td>
-            </tr>
-          ))
+          rooms.map((room) => {
+            const busy = actionLoading === `room-${room.id}`;
+            return (
+              <tr key={room.id}>
+                <td>{room.id}</td>
+                <td>
+                  <strong>{room.title}</strong>
+                  <span>{room.uuid}</span>
+                </td>
+                <td>
+                  <strong>{room.owner?.name || '—'}</strong>
+                  <span>{room.owner?.email || ''}</span>
+                </td>
+                <td>
+                  <span className={`admin-badge ${room.status === 'active' ? 'is-active' : ''}`}>{room.status === 'active' ? 'Активна' : 'Закрыта'}</span>
+                </td>
+                <td>{room.participants_count ?? 0}</td>
+                <td>{room.active_participants_count ?? 0}</td>
+                <td>{room.messages_count ?? 0}</td>
+                <td>{formatDate(room.created_at)}</td>
+                <td>
+                  {room.status === 'active' && (
+                    <button
+                      type="button"
+                      className="admin-action-btn admin-action-btn--block"
+                      disabled={busy}
+                      onClick={() => onCloseRoom(room.id)}
+                    >
+                      {busy ? '…' : 'Закрыть'}
+                    </button>
+                  )}
+                </td>
+              </tr>
+            );
+          })
         )}
       </tbody>
     </table>

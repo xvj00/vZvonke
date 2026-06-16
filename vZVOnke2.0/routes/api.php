@@ -51,6 +51,9 @@ Route::middleware(['auth:sanctum', 'admin', 'throttle:api-rooms'])
     ->group(function () {
         Route::get('/overview', [AdminController::class, 'overview'])->name('overview');
         Route::get('/users', [AdminController::class, 'users'])->name('users');
+        Route::post('/users/{user}/block', [AdminController::class, 'blockUser'])->name('users.block');
+        Route::post('/users/{user}/unblock', [AdminController::class, 'unblockUser'])->name('users.unblock');
         Route::get('/rooms', [AdminController::class, 'rooms'])->name('rooms');
         Route::get('/rooms/active', [AdminController::class, 'activeRooms'])->name('rooms.active');
+        Route::post('/rooms/{room}/close', [AdminController::class, 'closeRoom'])->name('rooms.close');
     });

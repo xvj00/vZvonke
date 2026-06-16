@@ -580,6 +580,32 @@ const Dashboard = () => {
         setSharebarOpen(false);
       });
 
+      socket.on('kicked', ({ reason }) => {
+        setError(reason || 'Вы были удалены из звонка.');
+        closeRoomConnections();
+        setActiveRoom(null);
+        setSharebarOpen(false);
+      });
+
+      socket.on('muteRequested', () => {
+        if (localStreamRef.current) {
+          localStreamRef.current.getAudioTracks().forEach((track) => { track.enabled = false; });
+        }
+        setAudioEnabled(false);
+      });
+
+      socket.on('videoDisableRequested', () => {
+        if (localStreamRef.current) {
+          localStreamRef.current.getVideoTracks().forEach((track) => { track.enabled = false; });
+        }
+        setVideoEnabled(false);
+        const socket2 = socketRef.current;
+        const roomId2 = activeRoomIdRef.current;
+        if (socket2 && roomId2) {
+          requestSocket(socket2, 'updateMediaState', { roomId: roomId2, cameraEnabled: false }).catch(() => {});
+        }
+      });
+
       await new Promise((resolve, reject) => {
         socket.once('connect', resolve);
         socket.once('connect_error', reject);
@@ -1006,6 +1032,33 @@ const Dashboard = () => {
     if (socket && roomId) {
       requestSocket(socket, 'updateMediaState', { roomId, cameraEnabled: enabled }).catch(() => {});
     }
+  };
+
+  const kickParticipant = (targetPeerId) => {
+    const socket = socketRef.current;
+    const roomId = activeRoomIdRef.current;
+    if (!socket || !roomId) return;
+    requestSocket(socket, 'kickParticipant', { roomId, targetPeerId }).catch((err) => {
+      setError(localizeApiMessage(err?.message || 'Не удалось удалить участника.'));
+    });
+  };
+
+  const muteParticipant = (targetPeerId) => {
+    const socket = socketRef.current;
+    const roomId = activeRoomIdRef.current;
+    if (!socket || !roomId) return;
+    requestSocket(socket, 'muteParticipant', { roomId, targetPeerId }).catch((err) => {
+      setError(localizeApiMessage(err?.message || 'Не удалось выключить микрофон.'));
+    });
+  };
+
+  const disableVideoParticipant = (targetPeerId) => {
+    const socket = socketRef.current;
+    const roomId = activeRoomIdRef.current;
+    if (!socket || !roomId) return;
+    requestSocket(socket, 'disableVideoParticipant', { roomId, targetPeerId }).catch((err) => {
+      setError(localizeApiMessage(err?.message || 'Не удалось выключить камеру.'));
+    });
   };
 
   const toggleHandRaise = async () => {
@@ -1528,7 +1581,17 @@ const Dashboard = () => {
                     <div className="participants__list">
                       <ParticipantRow name={`${activeRoom.displayName} (Вы)`} avatarUrl={currentUserAvatarUrl || null} muted={!audioEnabled} raised={handRaised} />
                       {remoteParticipants.map((p) => (
-                        <ParticipantRow key={p.peerId} name={p.displayName || 'Участник'} avatarUrl={p.avatarUrl || null} muted={false} raised={p.handRaised === true} />
+                        <ParticipantRow
+                          key={p.peerId}
+                          name={p.displayName || 'Участник'}
+                          avatarUrl={p.avatarUrl || null}
+                          muted={false}
+                          raised={p.handRaised === true}
+                          isOrganizer={isOrganizer}
+                          onKick={() => kickParticipant(p.peerId)}
+                          onMute={() => muteParticipant(p.peerId)}
+                          onDisableVideo={() => disableVideoParticipant(p.peerId)}
+                        />
                       ))}
                     </div>
                   </div>
@@ -1759,19 +1822,31 @@ const Dashboard = () => {
 
       <main className="landing__content">
         <section className="landing__left">
-          <h1>Видеовстречи без ограничений</h1>
-          <p className="muted">
-            Бесплатные звонки любого масштаба. Общайтесь с коллегами и друзьями без лимитов по времени.
-          </p>
+          {isGuestRoute && roomParam && !user ? (
+            <>
+              <h1>Вас приглашают в звонок</h1>
+              <p className="muted">
+                Вы можете подключиться как гость — просто введите своё имя. Или <Link className="inline-link" to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`}>войдите в аккаунт</Link> для полного доступа.
+              </p>
+            </>
+          ) : (
+            <>
+              <h1>Видеовстречи без ограничений</h1>
+              <p className="muted">
+                Бесплатные звонки любого масштаба. Общайтесь с коллегами и друзьями без лимитов по времени.
+              </p>
+            </>
+          )}
 
           {!user && (
             <div className="guest-name-panel">
               <label>
-                <span>Как вас представить в звонке</span>
+                <span>Ваше имя в звонке</span>
                 <input
                   placeholder="Например: Иван Иванов"
                   value={userName}
                   onChange={(e) => setUserName(e.target.value)}
+                  autoFocus={isGuestRoute && Boolean(roomParam)}
                 />
               </label>
             </div>
@@ -1815,22 +1890,37 @@ const Dashboard = () => {
             </div>
           )}
 
-          <div className="join-panel">
-            <div className="meeting-panel__title">{user ? '2. Или войдите по ссылке/коду' : 'Присоединиться по ссылке/коду'}</div>
-            <div className="join-panel__row">
-              <label>
-                <span>Код или ссылка</span>
-                <input
-                  placeholder="Вставьте ссылку приглашения или код комнаты"
-                  value={roomCodeInput}
-                  onChange={(e) => setRoomCodeInput(e.target.value)}
-                />
-              </label>
+          {isGuestRoute && roomParam && !user ? (
+            <div className="join-panel join-panel--guest-prominent">
+              <button
+                className="primary-btn join-panel__big-btn"
+                onClick={handleJoin}
+                disabled={!userName.trim() || loadingJoin || connectingRoom}
+              >
+                {loadingJoin || connectingRoom ? 'Подключаем…' : 'Войти в звонок'}
+              </button>
+              {!userName.trim() && (
+                <p className="join-panel__hint">Введите имя выше, чтобы войти</p>
+              )}
             </div>
-            <button className="secondary-btn" onClick={handleJoin} disabled={(!user && !userName) || loadingJoin || connectingRoom}>
-              {loadingJoin ? 'Подключаем…' : 'Присоединиться'}
-            </button>
-          </div>
+          ) : (
+            <div className="join-panel">
+              <div className="meeting-panel__title">{user ? '2. Или войдите по ссылке/коду' : 'Присоединиться по ссылке/коду'}</div>
+              <div className="join-panel__row">
+                <label>
+                  <span>Код или ссылка</span>
+                  <input
+                    placeholder="Вставьте ссылку приглашения или код комнаты"
+                    value={roomCodeInput}
+                    onChange={(e) => setRoomCodeInput(e.target.value)}
+                  />
+                </label>
+              </div>
+              <button className="secondary-btn" onClick={handleJoin} disabled={(!user && !userName) || loadingJoin || connectingRoom}>
+                {loadingJoin ? 'Подключаем…' : 'Присоединиться'}
+              </button>
+            </div>
+          )}
 
           {error && <div className="form-error">{error}</div>}
 
@@ -2175,13 +2265,39 @@ const ClearFocusIcon = () => (
   </svg>
 );
 
+const MicOffIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+    <line x1="1" y1="1" x2="23" y2="23" />
+    <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+    <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
+    <line x1="12" y1="19" x2="12" y2="23" />
+  </svg>
+);
+
+const CamOffIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="1" y1="1" x2="23" y2="23" />
+    <path d="M21 21H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3m3-3h6l2 3h2a2 2 0 0 1 2 2v9.34" />
+    <path d="M15 13a3 3 0 1 1-4.24-2.76" />
+  </svg>
+);
+
+const KickIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <line x1="17" y1="8" x2="23" y2="8" />
+    <polyline points="20 5 23 8 20 11" />
+  </svg>
+);
+
 const AttachmentIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <path d="M21.44 11.05l-8.49 8.49a5 5 0 0 1-7.07-7.07l8.49-8.49a3.5 3.5 0 0 1 4.95 4.95l-8.5 8.49a2 2 0 0 1-2.83-2.83l8.01-8.01" />
   </svg>
 );
 
-const ParticipantRow = ({ name, avatarUrl, muted, raised = false }) => {
+const ParticipantRow = ({ name, avatarUrl, muted, raised = false, isOrganizer = false, onKick, onMute, onDisableVideo }) => {
   const initials = String(name || 'U')
     .split(' ')
     .filter(Boolean)
@@ -2203,6 +2319,19 @@ const ParticipantRow = ({ name, avatarUrl, muted, raised = false }) => {
       <div className={`participant-row__badge ${raised ? 'is-raised' : (muted ? 'is-muted' : '')}`} title={raised ? 'Рука поднята' : (muted ? 'Микрофон выключен' : 'Микрофон включен')}>
         {raised ? <HandIcon /> : <MicIcon />}
       </div>
+      {isOrganizer && onKick && (
+        <div className="participant-row__actions">
+          <button type="button" className="participant-action-btn" onClick={onMute} title="Выключить микрофон">
+            <MicOffIcon />
+          </button>
+          <button type="button" className="participant-action-btn" onClick={onDisableVideo} title="Выключить камеру">
+            <CamOffIcon />
+          </button>
+          <button type="button" className="participant-action-btn participant-action-btn--kick" onClick={onKick} title="Удалить из звонка">
+            <KickIcon />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

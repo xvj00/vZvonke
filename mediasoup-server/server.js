@@ -134,6 +134,68 @@ app.get("/metrics", (req, res) => {
   });
 });
 
+/** Вспомогательная проверка X-Mediasoup-Secret для внутренних эндпоинтов */
+function verifyInternalSecret(req, res) {
+  if (!mediasoupInternalSecret) return true;
+  const header = req.headers["x-mediasoup-secret"] || "";
+  if (header !== mediasoupInternalSecret) {
+    res.status(403).json({ error: "Forbidden" });
+    return false;
+  }
+  return true;
+}
+
+/** POST /internal/kick-user — отключить все сокеты пользователя по userId */
+app.post("/internal/kick-user", async (req, res) => {
+  if (!verifyInternalSecret(req, res)) return;
+  const { userId } = req.body;
+  if (!userId) {
+    res.status(400).json({ error: "userId обязателен" });
+    return;
+  }
+
+  let kicked = 0;
+  for (const room of rooms.values()) {
+    for (const [socketId, peer] of room.peers.entries()) {
+      if (String(peer.participantId) === String(userId) || String(peer.userId) === String(userId)) {
+        const targetSocket = io.sockets.sockets.get(socketId);
+        if (targetSocket) {
+          targetSocket.emit("kicked", { reason: "Вы заблокированы администратором." });
+          targetSocket.disconnect(true);
+          kicked += 1;
+        }
+      }
+    }
+  }
+
+  res.json({ ok: true, kicked });
+});
+
+/** POST /internal/close-room — принудительно закрыть комнату по roomId */
+app.post("/internal/close-room", async (req, res) => {
+  if (!verifyInternalSecret(req, res)) return;
+  const { roomId } = req.body;
+  if (!roomId) {
+    res.status(400).json({ error: "roomId обязателен" });
+    return;
+  }
+
+  const room = rooms.get(roomId);
+  if (!room) {
+    res.json({ ok: true, note: "Комната не найдена в памяти" });
+    return;
+  }
+
+  io.to(roomId).emit("roomEnded", { roomId });
+
+  const socketsInRoom = await io.in(roomId).fetchSockets();
+  for (const s of socketsInRoom) {
+    try { s.disconnect(true); } catch { /* ignore */ }
+  }
+
+  res.json({ ok: true });
+});
+
 async function createWorker() {
   const nextWorker = await mediasoup.createWorker({
     rtcMinPort: Number(process.env.RTC_MIN_PORT || 40000),
@@ -686,6 +748,49 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("kickParticipant", ({ roomId, targetPeerId }, cb) => {
+    try {
+      const room = rooms.get(roomId);
+      if (!room) throw new Error("Комната не найдена");
+      if (room.ownerPeerId !== socket.id) throw new Error("Только организатор может кикнуть участника");
+      const targetSocket = io.sockets.sockets.get(targetPeerId);
+      if (!targetSocket) throw new Error("Участник не найден");
+      targetSocket.emit("kicked", { reason: "Организатор удалил вас из звонка." });
+      targetSocket.disconnect(true);
+      cb?.({ ok: true });
+    } catch (error) {
+      cb?.({ error: error.message });
+    }
+  });
+
+  socket.on("muteParticipant", ({ roomId, targetPeerId }, cb) => {
+    try {
+      const room = rooms.get(roomId);
+      if (!room) throw new Error("Комната не найдена");
+      if (room.ownerPeerId !== socket.id) throw new Error("Только организатор может выключить микрофон");
+      const targetSocket = io.sockets.sockets.get(targetPeerId);
+      if (!targetSocket) throw new Error("Участник не найден");
+      targetSocket.emit("muteRequested", { by: socket.id });
+      cb?.({ ok: true });
+    } catch (error) {
+      cb?.({ error: error.message });
+    }
+  });
+
+  socket.on("disableVideoParticipant", ({ roomId, targetPeerId }, cb) => {
+    try {
+      const room = rooms.get(roomId);
+      if (!room) throw new Error("Комната не найдена");
+      if (room.ownerPeerId !== socket.id) throw new Error("Только организатор может выключить камеру");
+      const targetSocket = io.sockets.sockets.get(targetPeerId);
+      if (!targetSocket) throw new Error("Участник не найден");
+      targetSocket.emit("videoDisableRequested", { by: socket.id });
+      cb?.({ ok: true });
+    } catch (error) {
+      cb?.({ error: error.message });
+    }
+  });
+
   socket.on("disconnect", async () => {
     for (const [roomId, room] of rooms.entries()) {
       const peer = room.peers.get(socket.id);
@@ -745,9 +850,4 @@ async function start() {
 start().catch((error) => {
   console.error(error);
   process.exit(1);
-});
-nsole.error(error);
-  process.exit(1);
-});
-ocess.exit(1);
 });

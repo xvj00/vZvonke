@@ -7,6 +7,7 @@ use App\Models\RoomParticipant;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 
 class AdminController extends Controller
 {
@@ -34,7 +35,7 @@ class AdminController extends Controller
         $search = trim((string) $request->query('search', ''));
 
         $users = User::query()
-            ->select(['id', 'login', 'name', 'email', 'role', 'created_at', 'updated_at'])
+            ->select(['id', 'login', 'name', 'email', 'role', 'is_blocked', 'created_at', 'updated_at'])
             ->withCount([
                 'ownedRooms',
                 'roomParticipations',
@@ -75,6 +76,68 @@ class AdminController extends Controller
             ->paginate($this->perPage($request));
 
         return response()->json($rooms);
+    }
+
+    public function blockUser(User $user): \Illuminate\Http\JsonResponse
+    {
+        if ($user->role === 'admin') {
+            return response()->json(['message' => 'Нельзя заблокировать администратора.'], 403);
+        }
+
+        $user->update(['is_blocked' => true]);
+        $user->tokens()->delete();
+
+        $this->kickUserFromMediasoup($user->id);
+
+        return response()->json(['message' => 'Пользователь заблокирован.', 'user' => $user->only(['id', 'login', 'name', 'is_blocked'])]);
+    }
+
+    public function unblockUser(User $user): \Illuminate\Http\JsonResponse
+    {
+        $user->update(['is_blocked' => false]);
+
+        return response()->json(['message' => 'Пользователь разблокирован.', 'user' => $user->only(['id', 'login', 'name', 'is_blocked'])]);
+    }
+
+    public function closeRoom(Room $room): \Illuminate\Http\JsonResponse
+    {
+        if ($room->status === 'closed') {
+            return response()->json(['message' => 'Комната уже закрыта.'], 422);
+        }
+
+        $room->update(['status' => 'closed', 'closed_at' => now()]);
+
+        $this->closeRoomInMediasoup($room->uuid);
+
+        return response()->json(['message' => 'Комната закрыта.']);
+    }
+
+    private function kickUserFromMediasoup(int $userId): void
+    {
+        $url = config('services.mediasoup.internal_url', env('MEDIASOUP_SIGNALING_URL', 'http://localhost:4001'));
+        $secret = config('services.mediasoup.secret', env('MEDIASOUP_INTERNAL_SECRET', ''));
+
+        try {
+            Http::withHeaders(array_filter(['X-Mediasoup-Secret' => $secret ?: null]))
+                ->timeout(5)
+                ->post("{$url}/internal/kick-user", ['userId' => $userId]);
+        } catch (\Throwable) {
+            // mediasoup может быть недоступен — не критично
+        }
+    }
+
+    private function closeRoomInMediasoup(string $roomUuid): void
+    {
+        $url = config('services.mediasoup.internal_url', env('MEDIASOUP_SIGNALING_URL', 'http://localhost:4001'));
+        $secret = config('services.mediasoup.secret', env('MEDIASOUP_INTERNAL_SECRET', ''));
+
+        try {
+            Http::withHeaders(array_filter(['X-Mediasoup-Secret' => $secret ?: null]))
+                ->timeout(5)
+                ->post("{$url}/internal/close-room", ['roomId' => $roomUuid]);
+        } catch (\Throwable) {
+            // mediasoup может быть недоступен — не критично
+        }
     }
 
     private function roomQuery(): Builder

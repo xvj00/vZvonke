@@ -16,7 +16,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'admin' => \App\Http\Middleware\EnsureAdmin::class,
             'mediasoup.secret' => \App\Http\Middleware\VerifyMediasoupInternalSecret::class,
+            'check.blocked' => \App\Http\Middleware\CheckUserStatus::class,
         ]);
+        $middleware->appendToGroup('api', \App\Http\Middleware\CheckUserStatus::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

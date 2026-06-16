@@ -60,12 +60,24 @@ export const adminApi = {
     const response = await api.get('/admin/users', { params });
     return response.data;
   },
+  async blockUser(userId) {
+    const response = await api.post(`/admin/users/${userId}/block`);
+    return response.data;
+  },
+  async unblockUser(userId) {
+    const response = await api.post(`/admin/users/${userId}/unblock`);
+    return response.data;
+  },
   async rooms(params = {}) {
     const response = await api.get('/admin/rooms', { params });
     return response.data;
   },
   async activeRooms(params = {}) {
     const response = await api.get('/admin/rooms/active', { params });
+    return response.data;
+  },
+  async closeRoom(roomId) {
+    const response = await api.post(`/admin/rooms/${roomId}/close`);
     return response.data;
   },
 };

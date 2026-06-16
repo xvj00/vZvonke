@@ -298,3 +298,56 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Admin action buttons */
+.admin-action-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+  white-space: nowrap;
+}
+
+.admin-action-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.admin-action-btn--block {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+.admin-action-btn--block:hover:not(:disabled) {
+  background: #fecaca;
+}
+
+.admin-action-btn--unblock {
+  background: #dcfce7;
+  color: #166534;
+  border-color: #bbf7d0;
+}
+
+.admin-action-btn--unblock:hover:not(:disabled) {
+  background: #bbf7d0;
+}
+
+.admin-badge--blocked {
+  background: #fee2e2;
+  color: #b91c1c;
+  margin-left: 6px;
+}
+
+.admin-row--blocked td {
+  opacity: 0.6;
+}
+
+.admin-row--blocked .admin-action-btn--block {
+  display: none;
+}

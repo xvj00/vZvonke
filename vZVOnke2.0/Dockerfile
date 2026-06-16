@@ -29,7 +29,13 @@ COPY . .
 RUN composer dump-autoload --optimize --no-dev
 
 RUN echo 'upload_max_filesize = 64M' > /usr/local/etc/php/conf.d/uploads.ini \
-    && echo 'post_max_size = 64M' >> /usr/local/etc/php/conf.d/uploads.ini
+    && echo 'post_max_size = 64M' >> /usr/local/etc/php/conf.d/uploads.ini \
+    && echo 'memory_limit = 128M' >> /usr/local/etc/php/conf.d/uploads.ini \
+    && echo 'opcache.enable=1' > /usr/local/etc/php/conf.d/opcache.ini \
+    && echo 'opcache.memory_consumption=64' >> /usr/local/etc/php/conf.d/opcache.ini \
+    && echo 'opcache.max_accelerated_files=8000' >> /usr/local/etc/php/conf.d/opcache.ini
+
+COPY docker/php/www.conf /usr/local/etc/php-fpm.d/www.conf
 
 RUN mkdir -p storage/framework/{sessions,views,cache} storage/logs bootstrap/cache \
     && chown -R www-data:www-data storage bootstrap/cache
